@@ -65,3 +65,44 @@ docs, and pulling the live exports turned two of the README's illustrative examp
 checkable numbers — including one that had already gone stale (Rev 15 → Rev 16). Nothing
 was written to the repo except `CLAUDE.md` and these two log files, so there is no
 generated code carrying unverified assumptions yet.
+
+---
+
+## 2026-08-21 — Repository setup
+
+**Goal.** Put the work under version control before writing any code, since the
+submission requires full history and rewriting it later is not an option.
+
+**Done.**
+- Searched for upstream history before initializing anything. `~/Downloads/chp99-takehome`
+  is an extracted copy with no repository, and the archive it came from,
+  `chp99-takehome-1871fc6.zip`, is a zip containing a zip whose listing has **0** entries
+  under `.git/`. Conclusion: the scaffold shipped without history (D-0002).
+- Wrote a root `.gitignore`: macOS and editor noise, local compose overrides, and `.env`
+  with an explicit `!workflows/.env` negation.
+- `git init -b main`, identity set repo-locally to `Tong Mo <tm4371@nyu.edu>`
+  (global config had an empty `user.name`, so commits would otherwise have been
+  attributed to a guessed system identity).
+- Three commits: scaffold baseline, own additions, skill registration.
+
+**Verified.**
+- `workflows/.env` is committed, not ignored: `git status --porcelain -uall` listed it as
+  `??` before staging, and it appears as `A workflows/.env` in commit 1. The negation in
+  the root `.gitignore` works as intended — worth checking explicitly, because the
+  blanket `.env` rule above it would otherwise have silently dropped the Hatchet token
+  the worker needs.
+- `git status` is clean after the three commits; nothing untracked was left behind.
+- `diff -r skills/hatchet-cli .claude/skills/hatchet-cli` reports no differences.
+
+**Notes.**
+- `.claude/skills/hatchet-cli/` exists as a byte-identical copy of the vendored skill,
+  committed separately so it can be dropped on its own. Claude Code only auto-discovers
+  skills under `.claude/skills/`; the vendored copy is harness-neutral and is reached by
+  the pointer in `AGENTS.md` instead.
+- The `hatchet` CLI is not installed on this machine (`which hatchet` → not found). Not
+  blocking: the dashboard on :8080 needs no login. Install it before the first failed run
+  needs diagnosing, following `skills/hatchet-cli/references/setup-cli.md`.
+
+**Next.** Work through the pending decisions in `DECISIONS.md` — the schema is the part
+of Part 2 that carries the most weight, and P-a through P-f all have to be answered
+before the parser can be written.

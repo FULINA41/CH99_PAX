@@ -32,6 +32,36 @@ alternative and no tradeoff is not worth writing.
 
 ---
 
+## D-0002 — Start git history with an unmodified import of the provided scaffold
+**Date:** 2026-08-21 · **Area:** process · **Status:** accepted
+
+**Context.** The submission requires keeping all git history and commits, but the
+exercise was distributed as a plain archive: `chp99-takehome-1871fc6.zip` contains zero
+`.git/` entries, and the working directory had no repository. There is no upstream
+history to preserve, so "keep all history" can only mean the history created from here —
+which makes the starting point a choice rather than a given.
+
+**Options.**
+- One initial commit containing everything, provided files and own work mixed together —
+  simplest, but a reviewer can no longer tell the two apart by diffing.
+- Import the scaffold byte-for-byte as commit 1, then add own work in later commits.
+- Reconstruct upstream history from the archive's commit sha (`1871fc6`) — not possible
+  without the origin repository.
+
+**Decision.** The second. Commit 1 is the scaffold exactly as distributed; everything
+authored for this exercise lands in later commits, each scoped to one concern. Commit
+identity is set repo-locally to `Tong Mo <tm4371@nyu.edu>` so it matches the address the
+exercise was sent to.
+
+**Tradeoff.** Costs one extra commit and requires resisting the urge to fix anything in
+the scaffold before the baseline lands. It is wrong only if the scaffold itself needs
+editing early and often, which would make the baseline diff noisy rather than useful.
+No rebasing or squashing from here — the requirement rules out rewriting.
+
+**Feeds.** SUBMISSION.md §6
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
