@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local environment overrides.
+#
+# workflows/.env is committed on purpose: the Hatchet dev image has auth compiled
+# out and ships one fixed, non-expiring worker token, so it is not a secret and
+# there is nothing to rotate. The negation below keeps it tracked despite the
+# blanket rule above it.
+.env
+.env.local
+!workflows/.env
+
+# Local port remaps and other machine-specific compose tweaks. See AGENTS.md.
+docker-compose.override.yaml
+docker-compose.override.yml
+
+# Logs and scratch output
+*.log
