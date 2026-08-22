@@ -5,8 +5,15 @@ description = "Hatchet workflows for the Chapter 99 take-home"
 requires-python = ">=3.11"
 dependencies = [
     "hatchet-sdk>=1.37.0,<2",
+    "httpx>=0.27,<1",
+    "psycopg[binary]>=3.2,<4",
 ]
 
 [dependency-groups]
-# Add whatever you need — an HTTP client, a PDF parser, a Postgres driver.
-dev = []
+dev = [
+    "pytest>=8,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
