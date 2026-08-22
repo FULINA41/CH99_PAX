@@ -33,6 +33,21 @@ graded write-up and must be filled in as work progresses, not at the end.
 - Every technical decision gets written down as it is made — see **Decision log** below.
   This is not optional bookkeeping; it is how `SUBMISSION.md` gets written.
 
+## Working with the user
+
+**Say what you are about to do, and why, before doing it.** One or two sentences ahead of
+the action — what the step is and what it buys — not a plan dump, and not a narration
+after the fact. This applies to anything that changes state: writing or editing files,
+running commands that touch Docker, the database, or git, and committing. Reads and
+searches need no announcement.
+
+**Report what actually happened when the task ends.** Name the files that changed, the
+commands that ran, and their real output. Separate what is finished from what is still
+open, and say plainly when something was skipped, failed, or left half-done — the journal
+convention below is worthless if the reporting above it is optimistic.
+
+Write both in the user's language; code, comments, and committed documents stay in English.
+
 ## Decision log (required)
 
 Two append-only files under `docs/`. Both are written in English and are part of the
