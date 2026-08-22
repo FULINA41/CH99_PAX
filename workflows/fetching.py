@@ -1,10 +1,3 @@
-"""
-Downloading one source, with the retry policy and the idempotency check.
-
-Retries live here rather than on the Hatchet task because a fetch task reports its
-failure instead of raising (D-0007), and Hatchet only retries a task that raises.
-"""
-
 import hashlib
 import time
 from datetime import datetime, timezone
@@ -55,11 +48,22 @@ def fetch_source(
     force: bool = False,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
-    """
-    Fetch one source into `directory`, and report what happened.
+    """Fetch one source into ``directory`` and report what happened.
 
-    Never raises: a failure is a result with status 'failed', so the summarise task
-    still runs and the manifest still covers every source.
+    Args:
+        source: Which source to fetch.
+        release: Release to pin the URL to, where the endpoint supports it.
+        directory: The release directory the payload belongs in.
+        client: An httpx client to reuse. One is created and closed when omitted.
+        force: Rewrite the payload even when the bytes are identical.
+        sleep: Injection point for the backoff delay, so tests do not wait.
+
+    Returns:
+        A JSON-serializable result carrying ``status`` (``fetched``, ``unchanged`` or
+        ``failed``), the sha256, byte count, http status, attempts, duration and error.
+
+    This never raises. A failure is reported as a result so the summarize task still
+    runs and the manifest still covers every source (D-0007).
     """
     url = source.url(release)
     dest = Path(directory) / source.filename
@@ -94,7 +98,7 @@ def fetch_source(
 def _attempt(
     client: httpx.Client, url: str, dest: Path, force: bool
 ) -> tuple[str, int, str, int]:
-    """One download: stream to a staged file, hash it, keep it only if it differs."""
+    # One download: stream to a staged file, hash it, keep it only if it differs.
     digest = hashlib.sha256()
     size = 0
 

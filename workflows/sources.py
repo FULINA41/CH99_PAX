@@ -14,7 +14,6 @@ class Source:
     pinnable: bool
 
     def url(self, release: str | None = None) -> str:
-        """The address to fetch, pinned to `release` where the endpoint allows it."""
         if not self.pinnable:
             return self.template
         return self.template.format(release=release or CURRENT_RELEASE)

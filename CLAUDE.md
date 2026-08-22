@@ -30,6 +30,13 @@ graded write-up and must be filled in as work progresses, not at the end.
   assessed. Do not replace it with a plain script.
 - When a domain interpretation is ambiguous, record the assumption in
   `SUBMISSION.md` and move on.
+- **Docstrings go on the entry points, in Google style** — a summary line, then `Args:` /
+  `Returns:` / `Raises:` sections where they carry something the signature does not. An
+  entry point is what a caller outside this codebase reaches for: `fetch_source`,
+  `current_release`, `record_fetch`. Everything else — helpers, dataclass methods,
+  plumbing that only exists to serve an entry point — gets none, whether or not another
+  module imports it. Where such a function needs explaining, the explanation is a comment
+  on the line that earns it, and it says *why*, since *what* is already in the code.
 - **Tests assert behaviour, not existence.** A test earns its place by pinning down what
   the code does under one named condition — "an interrupted write leaves nothing at the
   target path", "a 404 is not retried". Do not write tests that check a value is non-empty,
@@ -55,6 +62,12 @@ searches need no announcement.
 commands that ran, and their real output. Separate what is finished from what is still
 open, and say plainly when something was skipped, failed, or left half-done — the journal
 convention below is worthless if the reporting above it is optimistic.
+
+**Committing needs approval, and so does starting the next step.** When executing a plan,
+finish the step, run its verification, and report — then stop. Do not commit and do not
+begin the following step until the user approves. Approval covers both: the commit and the
+step after it. A commit made before review has to be reverted or amended to change, and
+amending is not available here — the submission requires history to stand as written.
 
 Write both in the user's language; code, comments, and committed documents stay in English.
 

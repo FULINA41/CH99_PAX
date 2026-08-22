@@ -1,11 +1,3 @@
-"""
-Which HTS revision is live right now.
-
-Unlike a fetch, this raises when it cannot be resolved. Without a release name there
-is no directory to write into and no value to record as provenance, so continuing
-would produce payloads that cannot be attributed to a revision.
-"""
-
 import time
 from typing import Any, Callable
 
@@ -26,6 +18,20 @@ def current_release(
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
+    """Resolve the HTS revision that is live right now.
+
+    Args:
+        client: An httpx client to reuse. One is created and closed when omitted.
+        sleep: Injection point for the backoff delay, so tests do not wait.
+
+    Returns:
+        The release, as ``{"name", "title", "resolved_at"}``.
+
+    Raises:
+        RuntimeError: Once the retries are spent. Unlike a fetch, an unresolved release
+            is fatal: the run would have no directory to write into and no revision to
+            record as provenance.
+    """
     owned = client is None
     client = client or default_client()
     last: Exception | None = None

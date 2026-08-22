@@ -28,6 +28,14 @@ def record_fetch(
     run_id: str | None,
     dsn: str | None = None,
 ) -> None:
+    """Record one fetch, so a parsed row can later name where it came from.
+
+    Args:
+        entry: A fetch result from ``fetch_source``, failures included.
+        release: The resolved release the fetch belongs to.
+        run_id: The Hatchet run, to trace a row back to the run that wrote it.
+        dsn: Connection string. Falls back to ``DATABASE_URL``.
+    """
     row = {
         "run_id": run_id,
         "release_name": release.get("name"),
