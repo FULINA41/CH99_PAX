@@ -106,3 +106,57 @@ submission requires full history and rewriting it later is not an option.
 **Next.** Work through the pending decisions in `DECISIONS.md` — the schema is the part
 of Part 2 that carries the most weight, and P-a through P-f all have to be answered
 before the parser can be written.
+
+---
+
+## 2026-08-21 (later) — Stack verification
+
+**Goal.** Prove the provided stack actually runs before designing Part 1 against it.
+Nothing had been executed up to this point; the work so far was reading and fetching.
+
+**Verified, in order:**
+
+| Step | Command | Result |
+| --- | --- | --- |
+| Daemon and ports | `docker info`, `lsof -nP -iTCP:<p>` | Docker 28.3.0; 5432 / 8080 / 7077 / 3000 all free |
+| Infrastructure | `docker compose up -d` | `db`, `hatchet`, `hatchet_db` all healthy within 10s of the poll starting |
+| Schema | `./setup.sh` | `hts_base`, `rule`, `rule_edge` created; the DROP notices confirm it is a reset, not a migration |
+| Worker | `docker compose --profile worker up -d` | `'chp99-worker' started, waiting for tasks...` |
+| Run, in container | `docker compose exec -T worker uv run python -m echo_run "hello chapter 99"` | `message='hello chapter 99' length=16` |
+| Run, from host | `cd workflows && uv sync && uv run python -m echo_run "host trigger"` | `message='host trigger' length=12` |
+| Hatchet API | `curl -o /dev/null -w '%{http_code}' localhost:8080/api/ready` | `200`; dashboard root also `200` |
+| Database | `psql -tAc "select count(*) …"` | `3 tables` |
+
+Both trigger paths work. The in-container path is the better one to put in `SUBMISSION.md`:
+it needs nothing installed on the grader's machine, while the host path requires `uv` and
+a synced venv.
+
+**Bug found — `cleanup.sh` cannot see this project.** Compose derives the project name
+from the directory, which here is `chp99-takehome 2`, giving `chp99-takehome2`.
+`cleanup.sh` hardcodes `PROJECT=chp99-takehome`. Consequences:
+
+- The `docker compose … down --volumes` line still works; it runs in the current project's
+  context and does not use the variable.
+- Every label filter (`label=com.docker.compose.project=$PROJECT`) matches nothing, so the
+  stranded-container and leftover-volume fallbacks are dead.
+- The verification block at the end therefore always counts 0/0/0 and prints
+  `clean: no containers, volumes or networks left` — **a false success**, regardless of
+  what is actually left behind.
+
+This is an artifact of the local directory name, not of the scaffold: a grader cloning
+into `chp99-takehome` gets the intended behaviour. Fix options, cheapest first: a local
+`.env` with `COMPOSE_PROJECT_NAME=chp99-takehome` (gitignored, touches no tracked file);
+renaming the directory; or adding `name: chp99-takehome` to `docker-compose.yaml`, which
+would fix it for any directory name but means editing the provided infrastructure.
+Not applied yet — changing the project name orphans the running containers, so it should
+happen at the next teardown.
+
+**Also noted.** The worker logs from an earlier run of the day are full of
+`time since last successful heartbeat: 919.73s, expects 4s` warnings — the machine slept
+while the worker was connected. Harmless, but worth recognizing so it is not mistaken for
+a Hatchet fault later. It also means `docker compose logs worker` mixes runs; use
+`--since` when checking whether the current process started cleanly. The first grep for
+readiness matched a stale line for exactly this reason.
+
+**Next.** The four Part 1 decisions: workflow decomposition, idempotency key, provenance
+grain, and failure semantics.
