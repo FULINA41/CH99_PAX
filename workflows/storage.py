@@ -1,16 +1,8 @@
-"""
-Where payloads land, and how they get there without leaving half-written files.
-
-A download that dies mid-transfer must never leave something at the final path that
-looks like a complete payload, because the next run would hash it, find it unchanged,
-and trust it forever. Everything is written to a sibling `.part` file and moved into
-place with os.replace, which is atomic within a filesystem.
-"""
-
 import hashlib
 import json
 import os
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Iterator
 
@@ -25,24 +17,40 @@ LANDED = frozenset({"fetched", "unchanged"})
 
 
 def data_root() -> Path:
-    """The bind-mounted download directory: /data in the worker, ./data on the host."""
     return Path(os.environ.get("DATA_DIR", "/data"))
 
 
 def release_dir(release: str, root: Path | None = None) -> Path:
-    """Payloads are scoped by release, so a new revision never overwrites an old one."""
     return (root or data_root()) / "raw" / release
 
 
+@dataclass
+class Staged:
+    handle: BinaryIO
+    path: Path
+    keeping: bool = False
+
+    def keep(self) -> None:
+        """Promote what was written to the destination when the block exits."""
+        self.keeping = True
+
+
 @contextmanager
-def atomic_write(dest: Path) -> Iterator[BinaryIO]:
-    """Yield a handle to write `dest`; the caller's bytes only appear on success."""
+def staged_write(dest: Path) -> Iterator[Staged]:
+    """
+    Write beside `dest` and let the caller decide whether to keep it.
+
+    A fetch needs this: it can only tell a changed payload from an identical one after
+    the bytes have arrived and been hashed, and an unchanged payload must leave the
+    existing file alone rather than replace it with a byte-identical copy.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + PART_SUFFIX)
     handle = part.open("wb")
+    staged = Staged(handle=handle, path=part)
 
     try:
-        yield handle
+        yield staged
         handle.flush()
         os.fsync(handle.fileno())
     except BaseException:
@@ -51,7 +59,18 @@ def atomic_write(dest: Path) -> Iterator[BinaryIO]:
         raise
 
     handle.close()
-    os.replace(part, dest)
+    if staged.keeping:
+        os.replace(part, dest)
+    else:
+        part.unlink(missing_ok=True)
+
+
+@contextmanager
+def atomic_write(dest: Path) -> Iterator[BinaryIO]:
+    """Yield a handle to write `dest`; the caller's bytes only appear on success."""
+    with staged_write(dest) as staged:
+        yield staged.handle
+        staged.keep()
 
 
 def clear_stale_parts(directory: Path) -> list[Path]:

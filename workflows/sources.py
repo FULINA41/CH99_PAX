@@ -1,11 +1,3 @@
-"""
-The three USITC sources the scraper fetches, and how to address each one.
-
-Only the notes PDF endpoint accepts a release parameter. The two bulk exports always
-serve whatever is current, which is why a run records the release it saw before and
-after fetching rather than assuming one.
-"""
-
 from dataclasses import dataclass
 
 REST_ROOT = "https://hts.usitc.gov/reststop"
