@@ -165,6 +165,49 @@ reads the manifest rather than globbing the directory.
 
 ---
 
+## D-0007 — Fetch tasks report status instead of raising, so `summarize` always runs
+**Date:** 2026-08-22 · **Area:** scraper · **Status:** accepted · **Amends D-0006**
+
+**Context.** Measured, not assumed (see the Step 0 journal entry). A join task whose
+parent failed is `CANCELLED` and never executes, so a `summarize` that depends on all
+three fetches cannot write the manifest after a partial failure. An `on_failure_task` does
+run — but it fires the moment a task fails, while sibling branches are still in flight:
+in the probe it read `Step output for 'good' not found` because `good` was still mid-sleep
+and only printed `finished` afterwards. A manifest written there would be missing sources
+that were seconds from completing, which is the common case when a 404 fails instantly
+while the 14 MB PDF is still downloading.
+
+**Options.**
+- Fetch tasks raise; the manifest is written by an on-failure task — rejected by the
+  measurement above: the manifest would be incomplete and silently wrong.
+- Fetch tasks raise; no manifest at all, rebuild it from `source_fetch` at read time —
+  pushes the problem into Part 2 and makes `data/` no longer self-describing, losing what
+  D-0005 was for.
+- Fetch tasks catch their own failure, return a status object, and never raise.
+  `summarize` therefore always runs, writes a complete manifest covering every source with
+  its outcome, and raises at the end if any source failed so the run is still marked
+  FAILED.
+
+**Decision.** The third. Retry moves inside the task — Hatchet's task-level `retries` only
+trigger on an exception, so a task that swallows its failure gets no engine retries and
+must implement backoff itself in `fetching.py`.
+
+**Tradeoff.** A failed source shows a **green** task in the dashboard, which costs
+observability — the dimension being assessed. Mitigated three ways: the fetch task logs
+the failure through `ctx.log`, the `source_fetch` row carries `status='failed'` with the
+error text, and `summarize` fails the run with a message naming the failed sources. If
+per-task colour turns out to matter more than manifest completeness, this is the entry to
+supersede.
+
+**Also settled by the same experiment**, and carried into the implementation:
+`execution_timeout` defaults to 60s and must be raised for the fetch tasks; `retries=N`
+means N+1 attempts; `replay` re-runs every task, so resumability rests entirely on the
+idempotency from D-0004 rather than on the orchestrator.
+
+**Feeds.** SUBMISSION.md §3, §4
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

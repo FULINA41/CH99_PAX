@@ -160,3 +160,55 @@ readiness matched a stale line for exactly this reason.
 
 **Next.** The four Part 1 decisions: workflow decomposition, idempotency key, provenance
 grain, and failure semantics.
+
+---
+
+## 2026-08-22 — Step 0: measuring Hatchet's actual behaviour
+
+**Goal.** The Part 1 design left four questions about Hatchet unanswered, and how
+`summarize` is written depends entirely on them. Measure before writing real code.
+
+**Method.** A throwaway `probe.py` with a four-task DAG — `root` → (`good` sleeping 8s,
+`bad` raising immediately) → `join(parents=[good, bad])` — plus an `on_failure_task`.
+Every task printed a `PROBE` line so `docker compose logs worker` gave the true execution
+order. SDK version 1.37.1, read from the installed package rather than the docs.
+
+**Findings.**
+
+| Question | Answer |
+| --- | --- |
+| Does a sibling of a failed parallel task still run? | **Yes.** `good` printed `finished` after `bad` had failed twice. Final state: `good` COMPLETED, `bad` FAILED |
+| Does a join task with a failed parent run? | **No.** `join` never printed, and the run detail reports it `CANCELLED` — not skipped, cancelled |
+| Does an on-failure task run, and what can it read? | **Runs.** It read `output(root)` fine and `get_task_run_error(bad)` returned the real traceback. But `output(good)` raised `ValueError: Step output for 'good' not found` |
+| Does `replay` re-run everything or only failures? | **Everything.** After `runs.replay(...)`, `root` and `good` both executed again; `bad`'s attempt counter continued at 2 and 3 rather than resetting |
+
+**The finding that changes the design.** The on-failure task fires as soon as a task
+fails, *not* after the other branches settle: all of its output lines appeared **before**
+`PROBE good: finished`. `good` was still mid-sleep when the on-failure task tried to read
+its output. So writing the manifest inside an on-failure task would produce an incomplete
+manifest whenever a fetch fails fast while another is still downloading — precisely the
+common case, since a 404 fails instantly while the 14 MB PDF is still in flight.
+
+Recorded as **D-0007**, which supersedes the `summarize` shape in the design spec.
+
+**Two API facts worth keeping.**
+
+- `execution_timeout` defaults to **`timedelta(seconds=60)`**. The design budgets 300s for
+  the PDF, so the fetch tasks must set it explicitly or the engine cancels a slow download
+  at one minute.
+- `retries=1` produced attempts 0 and 1 — **N retries means N+1 attempts**.
+
+**A gotcha `AGENTS.md` does not cover.** From *inside* the worker container, the REST
+client needs `HATCHET_CLIENT_SERVER_URL=http://hatchet:8888`. `AGENTS.md` documents the
+host case (`http://localhost:8080`) but not this one: the token's `server_url` claim is
+`localhost:8888`, which inside a container resolves to the container itself, so
+`h.runs.get(...)` fails with `Connection refused` on port 8888. gRPC is unaffected — it
+already has `HATCHET_CLIENT_HOST_PORT: hatchet:7077` from the compose file.
+
+**Consequence for "resumable".** Since `replay` re-runs every task, resumability cannot
+come from the orchestrator replaying only the failed part. It has to come from the tasks
+themselves being idempotent — which is what D-0004 buys: a replayed fetch re-downloads,
+hashes, finds the bytes identical, and rewrites nothing.
+
+**Cleanup.** `probe.py` and `probe_run.py` deleted, `worker.py` restored to registering
+`echo_workflow` only.
