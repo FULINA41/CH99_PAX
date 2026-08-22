@@ -212,3 +212,40 @@ hashes, finds the bytes identical, and rewrites nothing.
 
 **Cleanup.** `probe.py` and `probe_run.py` deleted, `worker.py` restored to registering
 `echo_workflow` only.
+
+---
+
+## 2026-08-22 — Step 1: making `cleanup.sh` tell the truth
+
+**Goal.** Fix the project-name mismatch found during stack verification, because Step 7's
+first acceptance check runs `./cleanup.sh` and trusts its report.
+
+**Done.** Branch `task1` created; Part 1 work happens there, one commit per step. Wrote a
+root `.env` containing `COMPOSE_PROJECT_NAME=chp99-takehome`, with a comment explaining
+what it fixes. Nothing tracked changed — `.env` is gitignored, and the provided
+infrastructure was not edited.
+
+**The rename costs the volumes.** Compose scopes volumes by project name, so the old
+`chp99-takehome2_*` volumes were orphaned by the change rather than carried over. They
+were removed deliberately and the stack rebuilt from empty: Hatchet re-ran its migrations
+against a fresh database and the committed worker token still authenticated, which is what
+the dev image's fixed token is for. `data/` was untouched throughout — it is a host bind
+mount, not a volume.
+
+**Verified.**
+
+| Check | Before | After |
+| --- | --- | --- |
+| `docker compose config` project name | `chp99-takehome2` | `chp99-takehome` |
+| `cleanup.sh`'s `PROJECT=` | `chp99-takehome` | unchanged — now matches |
+| Containers matching the project label | 0 | 4 |
+| Volumes matching the project label | 0 | 4 |
+| Networks matching the project label | 0 | 1 |
+| `git check-ignore -v .env` | — | matched `.gitignore:15` |
+
+Stack re-verified after the rebuild: three services healthy, `./setup.sh` recreated the
+three tables, worker registered, and `echo_run "step1 ok"` returned
+`message='step1 ok' length=8`.
+
+The label counts are the point: every fallback in `cleanup.sh` filters on that label, so
+at 0 they were silently no-ops and the script's closing "clean" was unconditional.
