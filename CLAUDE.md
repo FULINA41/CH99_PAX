@@ -30,8 +30,18 @@ graded write-up and must be filled in as work progresses, not at the end.
   assessed. Do not replace it with a plain script.
 - When a domain interpretation is ambiguous, record the assumption in
   `SUBMISSION.md` and move on.
+- **Tests assert behaviour, not existence.** A test earns its place by pinning down what
+  the code does under one named condition — "an interrupted write leaves nothing at the
+  target path", "a 404 is not retried". Do not write tests that check a value is non-empty,
+  that a key is present, or that a function returns the type it declares: they pass whether
+  or not the behaviour is correct. Each test should read as one sentence, with one reason
+  to fail.
 - Every technical decision gets written down as it is made — see **Decision log** below.
   This is not optional bookkeeping; it is how `SUBMISSION.md` gets written.
+- **Commit subjects are one line, ten words or fewer, and there is no body.** The reasoning
+  belongs in `docs/DECISIONS.md` and `docs/JOURNAL.md`, where it is searchable and can be
+  superseded; a commit message cannot be corrected without rewriting history, which this
+  submission forbids. Keep the `Co-Authored-By` trailer.
 
 ## Working with the user
 
