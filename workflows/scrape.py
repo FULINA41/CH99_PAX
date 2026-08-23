@@ -2,16 +2,15 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-from hatchet_sdk import Context, Hatchet
+from hatchet_sdk import Context
 from pydantic import BaseModel
 
+from client import hatchet
 from fetching import WORST_CASE_SECONDS, fetch_source
 from provenance import record_fetch
 from release import current_release
 from sources import source_by_key
 from storage import build_manifest, clear_stale_parts, release_dir, write_manifest
-
-hatchet = Hatchet()
 
 # The engine cancels a task at execution_timeout, which defaults to 60s -- shorter than
 # one fetch is allowed to take. Measured in Step 0, not assumed.

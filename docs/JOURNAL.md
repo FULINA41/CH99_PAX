@@ -467,3 +467,119 @@ The first draft also carried a `rate_kind` vocabulary copied from the scaffold
 compound duty like `4.4¢/kg + 8.5%` with no valid value — 417 rows that would have had to
 be filed under `other`. Caught while writing the decision entry, not while writing the
 schema, which is an argument for writing the entry first.
+
+---
+
+## 2026-08-23 — Part 2, Step 1: the parser skeleton, and a payload that was not ours
+
+Built `parsing/manifest.py`, `parsing/db.py`, `parse.py`, `parse_run.py`, and a shared
+`client.py`; registered `ParseHTS` in `worker.py`. 30 unit tests pass (23 before).
+
+**`client.py` exists because two `Hatchet()` instances cannot serve one worker.** The
+worker registers workflows by object, so `scrape.py` and `parse.py` had to share a client
+rather than each constructing one.
+
+### The check that was nearly deleted
+
+The first draft of `load_manifest` re-hashed every payload and compared against the
+manifest. Challenged as redundant, and the challenge was right on its own terms: the
+scraper writes through a staged file and `os.replace`, so a crash cannot leave a truncated
+payload at the target path — that was verified with SIGKILL during Part 1. Re-hashing
+second-guesses a guarantee the design already provides.
+
+Replaced with `exists` plus a size comparison — two stat calls, and the point is failing
+early with a clear message rather than verifying bytes.
+
+**It fired on the first real run.**
+
+```
+ManifestError: /data/raw/2026HTSRev16/ch99.json is 2,060,842 B,
+               but the manifest recorded 1,992,914 B
+```
+
+Not a false positive. `sha256` on disk was `7283b218…` against the manifest's `5a7ca6b0…`;
+`base.json` and the PDF matched exactly. `ch99.json` had an mtime of 12:17 against the
+manifest's 10:56 — something outside the workflow had written it, almost certainly an
+exploratory `curl` during the data analysis.
+
+Re-running the scraper resolved it, and the resolution is the uncomfortable part:
+
+```
+  ch99         fetched      1,992,914 B  sha 5a7ca6b0…
+```
+
+The API served the *manifest's* bytes. The 2,060,842 B file was never what this pipeline
+fetches, and it has now been replaced.
+
+### What that costs
+
+**Every Chapter 99 count in `DATA_INVENTORY.md` was measured against that file.** The base
+schedule is unaffected — `base.json` hashes identically, so every base-side number stands.
+
+Recounting the same fields against the authoritative payload, with the same definitions:
+
+| Metric | Documented | Authoritative |
+| --- | ---: | ---: |
+| rows / coded / superior | 3,336 / 3,098 / 238 | unchanged |
+| `general`, `other`, `Free`, `+ 25%`, `+ 15%` | 2,220 / 2,075 / 1,364 / 47 / 44 | 2,219 / 2,075 / 1,364 / 47 / 44 |
+| `additionalDuties` non-empty | 810 | **512** |
+| rows containing "provided for in" | 2,556 | **2,456** |
+
+Two of those are real differences under an identical definition. The rest of the recount
+(note citations, cited codes, CAS, exclusions) moved as well, but there the definitions
+were not identical, so the delta cannot be attributed cleanly and the numbers have to be
+re-derived rather than compared.
+
+### A second error the recount exposed, unrelated to the payload
+
+Classifying provisions into "cites a code / points at a note / country only" was done on
+each row's own `description`. Reading the ancestor chain instead — which is what the
+parser will do, and what the schedule means — `9903.01.01` reads:
+
+> Except for products described in headings 9903.01.02, 9903.01.03, 9903.01.04 and
+> 9903.01.05 **articles the product of Mexico**, as provided for in U.S. note 2(a) to
+> this subchapter
+
+It cites a note, but note 2(a) is prose defining country of origin, not a list of
+subheadings. So a note citation only puts a provision on the code path **if that note is a
+list**, and which notes are lists is not known until the notes are parsed.
+
+**The 2,203 / 558 / 211 split in `DATA_INVENTORY.md` §4 is therefore not a fact that can be
+established before Step 4.** It is a parser output. The design it justifies is unaffected —
+`9903.01.01` still has no join key to the base schedule, so `rule.scope` (D-0018) is still
+needed — but the specific counts cited as evidence are not trustworthy and are marked as
+such until the resolver produces them.
+
+### Verification
+
+`ParseHTS` run from the host against the running worker:
+
+```
+release  2026HTSRev16
+source   /data/raw/2026HTSRev16/
+  base         source_fetch #5
+  ch99         source_fetch #4
+  notes_pdf    source_fetch #6
+```
+
+Provenance reconstruction tested by deleting every `source_fetch` row and re-running:
+three rows reappeared with `run_id` NULL, which is how a reconstructed row is
+distinguished from an observed one. Running again reused ids 4/5/6 and left the count at
+3, so it is idempotent.
+
+### Agent notes
+
+Two failures worth recording.
+
+The first is mine and was caught by the tool: editing `scrape.py` in two steps left the
+file referencing `Hatchet` after the import had been removed, and `compose watch`
+restarted the worker into that state, producing a `NameError` restart loop for about a
+minute. Nothing was lost, but a multi-edit refactor of a file under a watcher should be
+one write, not two.
+
+The second is that a check argued to be redundant found a real defect within minutes of
+being weakened. The redundancy argument was correct about the mechanism it addressed — the
+scraper's atomic write — and wrong about the threat, which was a human with `curl`. The
+weakened version still caught it, so the outcome was good, but the reasoning that produced
+it ("the design already guarantees this") would have justified removing the check
+entirely.
