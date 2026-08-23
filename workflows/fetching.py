@@ -17,6 +17,12 @@ CHUNK = 1024 * 1024
 MAX_ATTEMPTS = 3
 BACKOFF_BASE = 2.0
 
+# What one fetch costs at worst: every attempt burning its full timeout, plus the backoff
+# waited between them. scrape.py sizes the Hatchet execution_timeout from this rather than
+# from a single attempt, so the retry policy and the task budget cannot drift apart.
+BACKOFF_SECONDS = sum(BACKOFF_BASE**exponent for exponent in range(MAX_ATTEMPTS - 1))
+WORST_CASE_SECONDS = MAX_ATTEMPTS * TOTAL_TIMEOUT + BACKOFF_SECONDS
+
 # 429 asks for a retry; 5xx is the server's problem, not ours. Any other 4xx means the
 # request itself is wrong, and repeating it only delays the report.
 RETRYABLE_STATUSES = frozenset({429})

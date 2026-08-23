@@ -5,7 +5,7 @@ from typing import Any
 from hatchet_sdk import Context, Hatchet
 from pydantic import BaseModel
 
-from fetching import TOTAL_TIMEOUT, fetch_source
+from fetching import WORST_CASE_SECONDS, fetch_source
 from provenance import record_fetch
 from release import current_release
 from sources import source_by_key
@@ -15,7 +15,12 @@ hatchet = Hatchet()
 
 # The engine cancels a task at execution_timeout, which defaults to 60s -- shorter than
 # one fetch is allowed to take. Measured in Step 0, not assumed.
-FETCH_TIMEOUT = timedelta(seconds=TOTAL_TIMEOUT + 60)
+#
+# Sized from the whole retry policy, not one attempt: fetching.py retries three times and
+# a task cancelled mid-retry takes summarize with it (a task whose parent is CANCELLED
+# never runs), leaving payloads on disk with no manifest -- the exact failure D-0007
+# exists to prevent.
+FETCH_TIMEOUT = timedelta(seconds=WORST_CASE_SECONDS + 60)
 
 
 class ScrapeInput(BaseModel):
@@ -102,13 +107,21 @@ def summarize(input: ScrapeInput, ctx: Context) -> dict[str, Any]:
     # would land in a directory named for the previous one. It cannot be prevented, only
     # detected and recorded.
     if not resolved["pinned"]:
-        after = current_release()
-        if after["name"] != release["name"]:
-            manifest["release_changed_during_run"] = {
-                "before": release["name"],
-                "after": after["name"],
-            }
-            ctx.log(f"release moved {release['name']} -> {after['name']} mid-run")
+        try:
+            after = current_release()
+        except Exception as exc:  # noqa: BLE001 - a detection must not veto the manifest
+            # current_release raises by design, which is right in resolve_release: with no
+            # release there is nowhere to write. Here the bytes have already landed, so a
+            # USITC blip must not cost us the manifest that describes them.
+            manifest["release_recheck_failed"] = f"{type(exc).__name__}: {exc}"
+            ctx.log(f"release re-check failed, manifest written anyway: {exc}")
+        else:
+            if after["name"] != release["name"]:
+                manifest["release_changed_during_run"] = {
+                    "before": release["name"],
+                    "after": after["name"],
+                }
+                ctx.log(f"release moved {release['name']} -> {after['name']} mid-run")
 
     write_manifest(directory, manifest)
 

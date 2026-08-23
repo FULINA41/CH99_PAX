@@ -249,3 +249,51 @@ three tables, worker registered, and `echo_run "step1 ok"` returned
 
 The label counts are the point: every fallback in `cleanup.sh` filters on that label, so
 at 0 they were silently no-ops and the script's closing "clean" was unconditional.
+
+---
+
+## 2026-08-22 — Reviewing the DAG: two ways the manifest could have been lost
+
+**Goal.** Read `scrape.py` back against D-0006/D-0007 before calling Part 1 done. Both
+decisions rest on one guarantee — `summarize` always runs and always writes a manifest —
+so the review looked specifically for paths that break it.
+
+**Found two, both real.**
+
+1. **`FETCH_TIMEOUT` budgeted one attempt, not the retry sequence.** `TOTAL_TIMEOUT + 60`
+   = 360s, while `fetching.py` can spend `3 × 300s + 3s` = 903s. Against a hung server the
+   engine cancels the fetch task at 360s; a task whose parent is CANCELLED never runs, so
+   `summarize` never writes the manifest. The two constants lived in different files with
+   nothing tying them together.
+2. **The mid-run release re-check could abort `summarize` before `write_manifest`.**
+   `current_release()` raises by design. Placed at the top of `summarize`, a USITC blip
+   would kill the task with all three payloads already on disk and no manifest.
+
+Both are the same class of bug: something incidental was given the power to destroy the
+artefact the whole failure design exists to produce.
+
+**Fixed.**
+- `fetching.py` now exports `WORST_CASE_SECONDS = MAX_ATTEMPTS * TOTAL_TIMEOUT +
+  BACKOFF_SECONDS`; `scrape.py` derives `FETCH_TIMEOUT` from it (D-0008). Verified:
+  `WORST_CASE 903.0s / FETCH_TIMEOUT 963.0s / covers worst case: True`.
+- The re-check is wrapped; on failure the manifest carries `release_recheck_failed`
+  and the run continues (D-0009).
+
+**Verified, with output.**
+- Added `tests/test_scrape.py`, three cases driven through the SDK's own
+  `Task.mock_run(parent_outputs=...)` — no engine, no network, no database.
+- Checked the new test actually catches the old behaviour by reverting the fix in place:
+  `1 failed, 2 passed`, failing with `RuntimeError: could not resolve the current release:
+  HTTP 503` propagating out of `summarize`. Restored, then `18 passed in 0.82s`.
+
+**Agent notes.** The agent wrote `scrape.py` and both bugs came through its code; neither
+was caught by the tests it wrote at the time, because those tests covered the modules
+below the DAG and nothing exercised `summarize`. The review that found them was a
+line-by-line read against the decision log, not a test run — the decisions were specific
+enough ("summarize must always write the manifest") to check code against, which is the
+main argument for having written them down. `Task.mock_run` was found by introspecting the
+installed SDK rather than recalled, after `ctx`-faking was considered and rejected.
+
+**Not done.** `FETCHED_SOURCES` in `scrape.py` is unused. Nothing has run against the live
+API since the fixes — the verification plan in §9 of the design spec is still unrun, and
+`data/raw/2026HTSRev16/manifest.json` is still the hand-written prototype.
