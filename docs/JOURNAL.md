@@ -380,3 +380,90 @@ existing files' size, and the manifest reporting `complete: true` — the direct
 all three payloads even though two were not re-fetched. A bare run against Rev16 was
 unaffected. 23 unit tests pass, including one that queues no HTTP answers at all, so any
 request during a skip would raise.
+
+---
+
+## 2026-08-23 — Part 2, Step 0: the schema
+
+Four questions had to be answered from the data before the schema could be fixed, because
+each one changes a primary key or a column type.
+
+**Heading rows carry no rate.** Counted across both exports: of the rows with
+`superior="true"` — 5,614 in base, 238 in Chapter 99 — **zero** have `general`, `other`,
+`special` or `additionalDuties`. That is what makes D-0012 safe: rate inheritance always
+terminates on a coded row, so dropping heading rows cannot lose a rate.
+
+**Codes are unique.** 26,246 coded base rows and 3,098 coded Chapter 99 rows, no duplicates
+in either. `hts` stays a natural primary key; no surrogate key is needed anywhere except
+`note` and `parse_issue`.
+
+**`indent` jumps by more than one in 12 places** in the base export, which would have
+broken a naive stack-based tree builder. Printed all 12 with two rows of context: every one
+is a 10-digit statistical line sitting two levels below the 8-digit parent immediately
+above it (`2620.99.75` → `2620.99.75.20`). "Nearest preceding row of smaller indent" gets
+them all right, and the parent's code is a dotted prefix of the child's in every case — so
+that becomes a validation rule rather than an assumption.
+
+**`subchapter` is derivable.** The distinct headings are 9901, 9902, 9903, 9904, 9908,
+9915, 9917–9922. The heading's last two digits are the subchapter number in Arabic
+(9915 → XV), so no hardcoded lookup table is needed. This was not obvious from the JSON and
+was found by listing the headings rather than assuming.
+
+**`units` is an array.** 4,725 base rows report two units (`{doz.,kg}`), so a `text`
+column would have silently truncated a fifth of the rows that have units at all.
+
+### D-0011 was missing
+
+`PART1_SCRAPER.md` and `JOURNAL.md` both cite D-0011, and D-0010 is marked "superseded by
+D-0011", but the entry was never written — it was lost at the end of the Part 1 session.
+Backfilled from the code and the verification already recorded here. Worth noting as a
+process failure: the decision log's value depends on it being complete, and a dangling
+cross-reference is the only reason this was caught.
+
+### Verification
+
+Applied `db/schema.sql` twice against a running stack. Both runs exited 0 and `\dt` listed
+the same **11 tables** each time. The first run emitted seven "table does not exist,
+skipping" notices; the second emitted only "extension pg_trgm already exists".
+
+Two constructs are unusual enough to be worth testing for behaviour rather than existence:
+
+```
+INSERT  → full_description_tsv = 'acid':3 'alanin':5 'amino':2
+UPDATE  → full_description_tsv = 'acid':3 'amino':2 'amino-acid':1 'ester':6
+```
+
+The generated column follows an update with no trigger, which is the property it was chosen
+for. The GIN indexes answer: `to_tsquery('english', 'amino & acid')` returns the row, and
+`similarity(full_description, 'amino acids esters')` returns 0.667.
+
+`UNIQUE NULLS NOT DISTINCT` on `note` was tested by inserting two chapter-level notes with
+the same number and no subdivision:
+
+```
+ERROR:  duplicate key value violates unique constraint
+DETAIL:  Key (note_kind, subchapter, note_number, subdivision)=(chapter, null, 1, null)
+         already exists.
+```
+
+Without `NULLS NOT DISTINCT` both rows would have inserted, since Postgres treats NULLs as
+distinct by default. Test rows were removed by re-applying the schema; `hts_base` and
+`note` are back to 0 rows.
+
+**Dropped columns.** Searched the repo for `mfn_rate_pct`, `rate_value` and `note_ref`.
+`app/server.ts` only lists table names, so it is unaffected. `parts/PART2_PARSER.md` quotes
+them but is a supplied requirements document and is not edited. `CLAUDE.md` described
+`rule.rate_value` as current and was corrected.
+
+### Agent notes
+
+The schema was drafted once before any of the four probes above were run, and it was wrong
+in two places that the probes caught: it assumed heading rows might carry rates (which
+would have made dropping them unsafe), and it typed `units` as `text`. Writing SQL before
+counting rows produces confident, plausible, wrong columns.
+
+The first draft also carried a `rate_kind` vocabulary copied from the scaffold
+(`ad_valorem`, `specific`) without noticing that those name the *operand* and leave a
+compound duty like `4.4¢/kg + 8.5%` with no valid value — 417 rows that would have had to
+be filed under `other`. Caught while writing the decision entry, not while writing the
+schema, which is an argument for writing the entry first.

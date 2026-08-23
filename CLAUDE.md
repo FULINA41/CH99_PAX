@@ -209,9 +209,10 @@ modify goods classified in chapters 1–97, and they say so in prose — a paren
 like `(provided for in subheading 2922.49.30)` is the join key. Subchapter III lines
 key on country of origin and exclude other 9903 lines, so exclusions form a graph,
 not a list. Rates are frequently *additive* ("the duty provided in the applicable
-subheading + 25%"), which is why `rule.rate_kind` is an operator and `rule.rate_value`
-its operand. The three starter tables (`hts_base`, `rule`, `rule_edge`) are
-"a floor, not a ceiling" — extending `db/schema.sql` is most of what Part 2 is graded on.
+subheading + 25%"), which is why `rate_kind` is an operator and the columns beside it
+are its operands. The three starter tables were "a floor, not a ceiling"; the schema is
+now eleven tables, and `docs/SCHEMA.md` documents every column and when it is used.
+`docs/DECISIONS.md` D-0021 records what became of each column the scaffold shipped.
 
 ## Gotchas
 

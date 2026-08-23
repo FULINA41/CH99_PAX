@@ -304,24 +304,407 @@ fourth option above is the fix if it ever matters, and would supersede this entr
 
 **Feeds.** SUBMISSION.md §2, §5
 
+---
+
+## D-0011 — Skip a source whose endpoint cannot serve the pinned release
+**Date:** 2026-08-22 · **Area:** scraper · **Status:** accepted · supersedes D-0010
+
+**Context.** Written late: D-0010 was recorded as superseded by this entry, and
+`PART1_SCRAPER.md` and `JOURNAL.md` both cite D-0011, but the entry itself was never
+added. Backfilled here from the code and the verification in JOURNAL 2026-08-22.
+D-0010 declared the hazard without preventing it. Only the notes PDF endpoint accepts a
+release parameter; `exportList` ignores it and serves current. So `--release 2026HTSRev15`
+after Rev16 has landed re-downloads the exports, finds a different hash from the correct
+historical copy, and replaces it — reporting a normal `fetched` while turning a good
+snapshot into a mixed one.
+
+**Options.**
+- Leave it: reaching the hazard needs a stale `--release`, which the documented command
+  never passes.
+- Refuse `--release` unless it matches the live release — safe, but removes re-fetching a
+  historical PDF, which is the only reason the flag exists.
+- Skip the sources whose endpoint cannot honour the pin, before any request is made.
+
+**Decision.** The third. `fetch_source` returns `status='skipped'` with the on-disk size
+and hash when `release` differs from `live_release` and `not source.pinnable`. The branch
+sits ahead of the HTTP call, so a skip cannot touch the network or the file.
+
+**Tradeoff.** A pinned run now produces a partial directory by design, and `skipped` had
+to become a fourth status in `source_fetch` and the manifest. Verified with 40-byte marker
+files standing in for a historical snapshot: after `--release 2026HTSRev15` both markers
+were still 40 bytes and byte-identical, the PDF genuinely re-fetched at 13,957,698 B, and
+the manifest still reported `complete: true`.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0012 — Store only the rows that can be classified against
+**Date:** 2026-08-23 · **Area:** parser · **Status:** accepted
+
+**Context.** 5,614 of 31,860 base rows and 238 of 3,336 Chapter 99 rows carry no code.
+They are heading rows — `superior="true"` holds on exactly those rows in both files. A
+count over the export confirms they carry no rate of any kind: zero of them have
+`general`, `other`, `special` or `additionalDuties`. Their content is prose that scopes
+their children, and it is load-bearing: `9903.17.01` reads "Eligible to be imported under
+the first quota period", which means nothing until the two ancestors above it —
+"Sugars, syrups and molasses provided for in subheading 1701.12.10, …" and "Described in
+U.S. note 15(a) to this subchapter:" — are attached.
+
+**Options.**
+- Store every row, giving heading rows a surrogate key — highest fidelity, but forces a
+  surrogate primary key on all four tables and leaves every query filtering out rows that
+  can never be an answer.
+- Store only coded rows and drop the heading prose — simplest, and loses the scope of
+  9903.17.01 entirely.
+- Store only coded rows, and materialise the ancestor prose onto every descendant.
+
+**Decision.** The third. `hts_base` and `rule` hold 26,246 and 3,098 rows, keyed by the
+natural code — verified unique, zero duplicates in either file. `description` keeps the
+row's own prose; `full_description` is the ancestor chain joined onto it. Cross-references,
+note citations and countries are extracted from `full_description`, so a provision inherits
+its ancestors' scope, which is how the schedule is read legally.
+
+**Tradeoff.** Row counts no longer match the source files, and a reviewer diffing against
+the JSON will find 5,852 rows missing. The prose survives, but only in joined form: the
+boundaries between ancestor and descendant are not recoverable from `full_description`
+alone. Wrong if a heading row ever carries a rate — worth re-checking on a future revision,
+since the check above holds for 2026HTSRev16 and is not guaranteed by the format.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0013 — Rate kind is an operator; its operands are separate columns
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-c
+
+**Context.** "Rates must be computable, not just displayable" is an explicit requirement,
+and a single `numeric` cannot hold what the schedule actually prints: 5,863 pure ad valorem
+rates, 771 specific duties (`14.27¢/liter`), 417 compound duties (`4.4¢/kg + 8.5%`), and
+about 30 rows whose rate is an English sentence. Chapter 99 adds forms that are *relative*
+to the base rate — "The duty provided in the applicable subheading" (204 rows) and
+"…applicable subheading + 25%" (91 rows, spelled both `+ 25%` and `plus 25%`).
+
+**Options.**
+- Keep the scaffold's `rate_kind` vocabulary (`free`/`additive`/`ad_valorem`/`no_change`/
+  `specific`/`other`) and add columns — but `ad_valorem` and `specific` describe the
+  *operand*, not the operator, so a compound duty has no valid value.
+- One `duty_rate` table keyed by (owner, column) — normalises Column 1, Column 2 and the
+  additional duty into rows, at the cost of a polymorphic owner with no referential
+  integrity and a join on every lookup.
+- Split operator from operands: six operator values, three operand columns, filled in
+  whatever combination the printed rate needs.
+
+**Decision.** The third. `rate_kind ∈ (free, replace, additive, no_change, prose, none)`
+with `rate_ad_valorem_pct`, `rate_specific_amount`, `rate_specific_unit` beside it. A
+compound duty fills both operand groups. `free` is `replace` with pct 0 and is kept
+separate only because the schedule writes it as a word, so a calculation may ignore the
+distinction while a display honours it. `rate_text` always keeps the string as printed.
+The same five columns appear on `hts_base` (twice — Column 1 General and Column 2) and on
+`rule`.
+
+**Tradeoff.** Wide tables and a repeated column group instead of a normalised rate table;
+adding a fourth rate column means a migration rather than a row. Accepted because every
+duty calculation is then a single-row read, and because a polymorphic owner column would
+have given up foreign keys on the one join Part 3 makes constantly. `prose` is an admission,
+not a category — those ~30 rows are not computable and the UI has to say so.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
+## D-0014 — Materialise inherited base rates and record where each came from
+**Date:** 2026-08-23 · **Area:** parser · **Status:** accepted · settles P-b
+
+**Context.** 20,446 of 31,860 base rows have an empty `general` and inherit it from the
+nearest ancestor that states one: `2922.49.49.10` (Alanine) has no rate of its own and is
+dutiable at the 4.2% printed on `2922.49.49`. Resolving that at query time means a
+recursive CTE on the hot path of every duty calculation.
+
+**Options.**
+- Resolve at query time — always consistent, but the recursion is repeated per lookup and
+  every consumer has to know the rule.
+- Materialise the inherited rate onto every row — one read, at the cost of storing a
+  derived value.
+- Materialise and record the source row, so the derivation stays visible.
+
+**Decision.** The third. Every row carries a resolved rate; `rate_inherited_from` names the
+ancestor when the rate was not the row's own, and is NULL when it was. Verified that
+inheritance always terminates on a coded row, since no heading row carries a rate (D-0012).
+The parent chain is rebuilt from `indent` — nearest preceding row of smaller indent —
+which survives the 12 places where indent jumps by more than one: all 12 are 10-digit
+statistical lines sitting two levels below the 8-digit parent immediately above them.
+Where both rows carry a code, the parent's code must be a dotted prefix of the child's, and
+a violation goes to `parse_issue` rather than being written.
+
+**Tradeoff.** A derived value stored is a value that can go stale, so the whole table is
+rebuilt in one transaction per run rather than updated in place (D-0020). `rate_inherited_from`
+is a self-referencing foreign key, which means rows must be inserted parents-first — true of
+the export's document order, and a constraint on any future loader.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
+## D-0015 — Store a citation as printed and as resolved, in different tables
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-a
+
+**Context.** Chapter 99 cites 8-digit subheadings — `(provided for in subheading
+2922.49.30)` — while the rate-bearing rows in the base export are 8 or 10 digits
+(`2922.49.30.00`). An equality join returns zero rows, and this affects 2,556 of 3,336
+provisions. Matching is therefore prefix matching, and prefixes expand unevenly: `2922.49.30`
+reaches 1 base row, `7208.51` reaches 4, `4202` reaches 108. Separately, 69 cited codes
+resolve to nothing at all — some are provisions naming codes that no longer exist in this
+revision, some are noise the regex picked up (`2022`, `0090`).
+
+**Options.**
+- Store the cited string only, resolve at query time — honest, but every consumer
+  reimplements prefix matching, and the 108-row expansion is recomputed constantly.
+- Store the resolved codes only — fast, but the evidence is gone: a resolver bug can only
+  be found by re-parsing the prose, and the 69 unresolvable citations disappear.
+- Store both, in separate tables with different rules.
+
+**Decision.** The third. `rule_edge` is the fact layer: `target_hts` is the string exactly
+as printed, no foreign key, no normalisation, so a dead code is recorded rather than
+dropped. `rule_base_match` is the interpretation layer: a real foreign key to `hts_base`,
+plus `cited_code`, `match_kind` (exact/prefix) and `via` (description/note) saying how the
+match was reached. Prefix matching is anchored at a separator (`x == c or
+x.startswith(c + '.')`), because a bare `startswith` would let `2922.49.3` match
+`2922.49.30`.
+
+**Tradeoff.** The same citation is stored twice and the two can disagree if the resolver is
+re-run without the parser. Accepted because that is exactly the failure the split is meant
+to make visible: `rule_base_match` is fully derivable from `rule_edge` and `note_subheading`,
+so it can be rebuilt without touching the prose, and a reviewer can audit the interpretation
+without trusting it.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0016 — Notes are tables, and list-type notes expand into codes
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-e
+
+**Context.** 547 provisions across 33 note numbers define their scope by pointing at a U.S.
+note rather than by naming codes. `9903.88.01` covers "the subheadings enumerated in U.S.
+note 20(b)", and that list exists only in the PDF — pages of bare 8-digit codes, well over a
+thousand of them. Without the notes the parser cannot answer what the Section 301 headings
+actually cover. The requirement is also explicit: notes must be modelled and linked back to
+the headings that cite them.
+
+**Options.**
+- A `note_ref text` column on `rule`, as the scaffold has — records that a note was cited,
+  but cannot store the note, so the scope stays unknown.
+- Store note bodies only, as text — makes the prose readable but leaves 20(b) as an
+  unqueryable wall of digits.
+- Three tables: the note, the citation, and the codes a list note contains.
+
+**Decision.** The third. `note` holds the body, its kind, and where it was found in the PDF.
+`rule_note` is the citation, carrying `cited_text` as the description wrote it and a
+nullable `note_id` — a citation that matches no note keeps the text, gets a NULL, and a
+`parse_issue` row. `note_subheading` holds the codes a list note prints, in order, as a
+fact layer feeding `rule_base_match` the same way `rule_edge` does.
+
+**Tradeoff.** `note.content_kind` is a judgement made by the parser about a page of text,
+and a note classified `prose` that actually contains a list will silently under-cover its
+provisions. Extraction is also the weakest link in the chain: pypdf flattens a four-column
+table into runs of fixed-width codes, and the grey shading that marks expired provisions is
+lost entirely (P-i).
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0017 — Nothing the parser cannot read is discarded
+**Date:** 2026-08-23 · **Area:** parser · **Status:** accepted · settles P-d
+
+**Context.** A prose tariff schedule will always leave residue: ~30 rate strings that are
+sentences, 69 cited codes that resolve to nothing, countries written in forms the pattern
+does not cover. The failure mode worth preventing is not having residue — it is losing it
+quietly, which produces a database that looks complete and is not.
+
+**Options.**
+- Log to stderr — visible during the run, gone afterwards, and invisible to anyone reading
+  the database.
+- A status column on each table — keeps the problem next to the row, but only works when
+  there is a row; a citation that produced nothing has nowhere to live.
+- A dedicated `parse_issue` table.
+
+**Decision.** The third. `parse_issue(run_id, stage, issue_kind, subject, detail)`, written
+by every parse task. `subject` is the code or note the issue is about, `detail` the offending
+fragment. An empty `parse_issue` after a full run means the parser is not looking, not that
+the data is clean, and the acceptance check treats it that way.
+
+**Tradeoff.** Issues are recorded, not resolved, and a table nobody reads is only marginally
+better than a log. It is surfaced in the run summary and in the Part 2 write-up to make that
+less likely.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0018 — A provision's scope can be a country instead of a code
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted
+
+**Context.** Of the 3,098 coded Chapter 99 rows, 2,203 cite a base code in their own
+description and 558 point at a note that lists codes. The remaining 211 name a country and
+no product at all — "articles the product of Mexico". These have **no join key to the base
+schedule**: `9903.01.01` covers every good from Mexico, and each of `9903.05.20`–`9903.05.84`
+covers every good from its own country. They are also the most frequently applied duties in
+the current schedule.
+
+**Options.**
+- Materialise them against all 26,246 base rows — makes them look like every other rule, at
+  5.5 million rows per country-wide provision and a table that has to be rebuilt whenever
+  either side changes.
+- Leave them out of the resolved layer and handle them as a special case in application
+  code — cheap, and invisible to anyone reading the schema.
+- Give `rule` a `scope` column and let the resolver skip them deliberately.
+
+**Decision.** The third. `rule.scope ∈ (by_code, by_country_all_goods, unknown)`. A
+country-wide provision has no `rule_base_match` rows by design, and its applicability is
+decided by `rule_country` alone. `unknown` exists so that a provision the classifier cannot
+place is visible rather than silently filed as one of the other two.
+
+**Tradeoff.** Answering "what applies to this shipment" now needs two queries — a code path
+and a country path — and forgetting the second is a silent 25-point understatement on
+Chinese goods. Materialising would have made it one query; the row count is what rules it
+out.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
+## D-0019 — Goods identity is its own table, because the code does not choose
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted
+
+**Context.** Of the 994 base codes Chapter 99 cites, 439 — 44% — are cited by more than one
+provision; `3808.92.15` is cited by 34. This is not messy data. The base code is a bucket
+and a 9902 provision picks one substance out of it: four provisions cite `2922.49.30`, and
+they name 4-Chlorophenylglycine (CAS 6212-33-5), 2-Amino-5-sulfobenzoic acid (3577-63-7),
+3,4-Diaminobenzoic acid (619-05-6) and Methyl 2-amino-3-chlorobenzoate (77820-58-7). A query
+keyed on base code plus country therefore returns candidates, not an answer. 1,009 provisions
+carry a CAS number, which is exact and globally unique.
+
+**Options.**
+- Leave it in the description and match on words — the substance names are in the prose, but
+  matching them is fuzzy exactly where the answer must be exact.
+- A `cas_number` column on `rule` — one column, but a provision can name more than one
+  substance and the next identifier kind (a chemical name, a brand, a mill certificate)
+  needs another column.
+- A `rule_identifier(rule_hts, kind, value)` table.
+
+**Decision.** The third, with `kind` currently constrained to `'cas'`. Extracting CAS
+numbers turns a third of Chapter 99 into a deterministic lookup for an importer who knows
+what they are shipping.
+
+**Tradeoff.** The 2,089 provisions with no identifier still need prose matching, so this
+solves a third of the problem and makes the remaining two thirds look solved. The `kind`
+CHECK will need widening the moment a second identifier type is extracted.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
+## D-0020 — One revision resident; each task rebuilds its own tables in one transaction
+**Date:** 2026-08-23 · **Area:** parser · **Status:** accepted
+
+**Context.** Re-running any part must be safe, and the parser writes derived values —
+inherited rates, resolved matches — that go stale rather than merely duplicate. An upsert
+keyed on `hts` would leave behind rows for codes that a new revision deleted, and those rows
+would still satisfy every foreign key.
+
+**Options.**
+- Upsert on the natural key — no downtime, but deleted codes survive as ghosts.
+- Version every table by release and query the latest — supports comparing revisions, at the
+  cost of a release column in every key and every join.
+- Delete then insert, per task, inside one transaction.
+
+**Decision.** The third. The database holds exactly one revision. Each parse task opens a
+transaction, deletes the tables it owns, bulk-inserts, and commits, so a crash mid-task
+leaves the previous contents intact rather than a half-loaded table. `source_fetch_id` on
+`hts_base`, `rule` and `note` records which fetch the rows came from.
+
+**Tradeoff.** No revision-over-revision comparison — a genuinely interesting question this
+schema cannot answer without a migration. `data/raw/` keeps the payloads for every release
+fetched, so the history is recoverable by re-parsing, just not queryable. Task ordering
+becomes load-bearing: `resolve` must run after `parse_base`, since deleting `hts_base`
+cascades `rule_base_match` away.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0021 — What became of the scaffold's three tables
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted
+
+**Context.** The exercise supplies `hts_base`, `rule` and `rule_edge` and calls them "a floor,
+not a ceiling". Extending them is expected; renaming and removing their columns is not, and a
+reviewer who knows the starting schema should be able to see every departure in one place
+rather than by diffing SQL. Recorded here for that reason.
+
+**Original.**
+
+```sql
+CREATE TABLE hts_base (
+  hts          text PRIMARY KEY,
+  description  text,
+  mfn_rate_pct numeric
+);
+
+CREATE TABLE rule (
+  hts         text PRIMARY KEY,
+  subchapter  text NOT NULL,
+  description text NOT NULL,
+  rate_kind   text NOT NULL
+    CHECK (rate_kind IN ('free','additive','ad_valorem','no_change','specific','other')),
+  rate_value  numeric,
+  note_ref    text
+);
+
+CREATE TABLE rule_edge (
+  source_hts text NOT NULL REFERENCES rule(hts) ON DELETE CASCADE,
+  edge_type  text NOT NULL CHECK (edge_type IN ('references','excludes')),
+  target_hts text NOT NULL,
+  PRIMARY KEY (source_hts, edge_type, target_hts)
+);
+```
+
+**Column by column.**
+
+| Original | Now | Why |
+| --- | --- | --- |
+| `hts_base.hts` | kept, PRIMARY KEY | Codes are unique in the export — verified, zero duplicates in 26,246 rows |
+| `hts_base.description` | kept, plus `full_description` | "Other" means nothing without its ancestors (D-0012) |
+| `hts_base.mfn_rate_pct` | **removed** → `rate_kind` + 3 operand columns | Cannot hold 771 specific and 417 compound duties (D-0013). Keeping it beside `rate_ad_valorem_pct` would be two names for one number, and they would drift |
+| `rule.hts` | kept, PRIMARY KEY | Unique across 3,098 coded rows |
+| `rule.subchapter` | kept, now derived | The heading's last two digits are the subchapter number (9915 → XV). Not stated in the JSON, but exact |
+| `rule.description` | kept, plus `full_description` | Same reason as `hts_base` |
+| `rule.rate_kind` | kept, **vocabulary changed** | `ad_valorem` and `specific` name the *operand*, so a compound duty has no valid value. Now `free`/`replace`/`additive`/`no_change`/`prose`/`none` — purely operators (D-0013) |
+| `rule.rate_value` | **removed** → 3 operand columns | One numeric cannot express `4.4¢/kg + 8.5%`, and could not say whether 25 meant percent or cents |
+| `rule.note_ref` | **removed** → `rule_note` + `note` | A text pointer records that a note was cited but cannot store it; 547 provisions get their scope from notes (D-0016) |
+| `rule_edge` (all) | **unchanged** | Its design was already right: `target_hts` unnormalised and not a foreign key is exactly the fact layer D-0015 needs |
+
+**Added.** `hts_base`: `parent_hts`, `units`, Column 2 as five parsed columns, `special_text`,
+`rate_inherited_from`, `source_fetch_id`, a generated `tsvector`. `rule`: `heading`,
+`parent_hts`, `indent`, `scope`, four `additional_duty_*` columns, `source_fetch_id`, a
+generated `tsvector`. New tables: `source_fetch`, `rule_identifier`, `rule_country`, `note`,
+`rule_note`, `note_subheading`, `rule_base_match`, `parse_issue`.
+
+**Tradeoff.** Three scaffold columns no longer exist, so anyone with a query written against
+the starting schema has to rewrite it. The alternative — keeping `mfn_rate_pct` and
+`rate_value` as aliases — costs a rule about which column wins, and that rule is the kind
+that is right for a month.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
 numbered entry above once decided — do not decide them here.
 
-- **P-a · Cross-reference code granularity.** Chapter 99 cites 8-digit subheadings
-  (`provided for in subheading 2922.49.30`); the base export carries 10-digit lines
-  (`2922.49.30.00`). An equality join returns zero rows. Normalize to what, and does
-  `rule_edge.target_hts` store the cited string, the resolved code, or both?
-- **P-b · Inherited base rates.** 20,446 of 31,860 base rows have an empty `general`
-  rate and inherit it from an ancestor row via `indent`. Materialize the inherited rate
-  onto every row, or resolve it at query time?
-- **P-c · Rate representation.** `mfn_rate_pct numeric` cannot hold specific duties
-  (`14.27¢/liter`, 771 rows), compound duties (`4.4¢/kg + 8.5%`, 417 rows), or the ~30
-  rows whose rate is a sentence. What replaces or supplements that column?
-- **P-d · Unparsed prose.** What happens to a description whose cross-reference or rate
-  does not match any pattern — dropped, flagged, or stored with a parse-status column?
-  Silent loss is the failure mode the parser is most likely to have.
 - **P-g · Part 3 is intended to be an agent.** Stated 2026-08-22, ahead of Part 2 and
   explicitly not a constraint on it. It may amend the earlier choice of a rate explainer
   as the Part 3 shape, so revisit that before designing Part 3 — and check then whether an
@@ -337,8 +720,14 @@ numbered entry above once decided — do not decide them here.
   text extraction destroys, and by 161 "Compiler's note" asides in prose. The JSON carries
   no effective or expiry field at all. Decide whether to extract the compiler notes into a
   field, and how the UI says "this may no longer be in force".
-- **P-e · Notes as a table.** `9903.88.01` defines its own scope by pointing at
-  "the subheadings enumerated in U.S. note 20(b)", whose list exists only in the notes
-  PDF. How are notes stored, and how does a rule cite one?
+- ~~**P-a · Cross-reference code granularity.**~~ Settled by **D-0015**: stored twice, as
+  printed in `rule_edge` and as resolved in `rule_base_match`.
+- ~~**P-b · Inherited base rates.**~~ Settled by **D-0014**: materialised onto every row,
+  with `rate_inherited_from` naming the ancestor.
+- ~~**P-c · Rate representation.**~~ Settled by **D-0013**: `rate_kind` is an operator and
+  three operand columns hold the number, the amount and the unit.
+- ~~**P-d · Unparsed prose.**~~ Settled by **D-0017**: a `parse_issue` row, never a drop.
+- ~~**P-e · Notes as a table.**~~ Settled by **D-0016**: `note`, `rule_note` and
+  `note_subheading`.
 - ~~**P-f · Provenance grain.**~~ Settled by **D-0005**: per source per run, written to
   both `manifest.json` and a `source_fetch` table.
