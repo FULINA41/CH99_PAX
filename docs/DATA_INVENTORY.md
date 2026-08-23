@@ -4,7 +4,15 @@ What the three sources actually contain, field by field, with real values from t
 data. Written before designing the schema so the design argues from evidence rather than
 from the README's illustrative examples.
 
-Every count and sample below comes from release **2026HTSRev16**, fetched 2026-08-20/21.
+Every count and sample below comes from release **2026HTSRev16**.
+
+> **Corrected 2026-08-23.** The Chapter 99 figures were first measured against a
+> `ch99.json` that had been written into `data/` from outside the scraper and was not what
+> the workflow fetches. The payload was replaced by re-running Part 1 and every Chapter 99
+> number here was re-derived; the base schedule was unaffected, its payload hashing
+> identically throughout. `DECISIONS.md` D-0022 lists what changed, and JOURNAL 2026-08-23
+> records how it was found. Counts computed over a provision's **ancestor chain** rather
+> than its own row are marked *(chain)*, because that is what the parser reads.
 
 ---
 
@@ -51,12 +59,12 @@ code ranges. Non-empty counts are out of 3,336 (Ch 99) and 31,860 (base).
 | `indent` | 3,336 | 31,860 | Nesting depth as a string, `"0"`–`"5"`. The only thing that reconstructs the tree | **yes** |
 | `description` | 3,336 | 31,860 | The prose. Carries the cross-references, the exclusions, the country, the note citation | **yes** |
 | `superior` | 238 | 5,614 | `"true"` exactly on the rows whose `htsno` is empty — verified, the two sets match exactly in both files. Flags a parent heading row | **yes** |
-| `general` | 2,220 | 11,438 | Column 1 General rate — the MFN rate, or a Chapter 99 modifier | **yes** |
-| `special` | 2,372 | 7,123 | Column 1 Special — FTA / preference programs, with country codes in parentheses | maybe |
+| `general` | 2,219 | 11,438 | Column 1 General rate — the MFN rate, or a Chapter 99 modifier | **yes** |
+| `special` | 2,371 | 7,123 | Column 1 Special — FTA / preference programs, with country codes in parentheses | maybe |
 | `other` | 2,075 | 11,439 | **Column 2** — the statutory rate for countries without normal trade relations (Cuba, North Korea, Russia, Belarus) | maybe |
 | `units` | 2 | 19,847 | Statistical reporting units, e.g. `['No.']`, `['kg']` | no |
 | `footnotes` | 3,094 | 1,321 | Structured `{columns, marker, value, type}`. In Ch 99, 3,092 of them are the same pointer to statistical note 1. On the base side, a cross-reference — but not a reliable one, see below | trap |
-| `additionalDuties` | 810 | 0 | Extra specific duty on some Ch 99 headings, e.g. `66.6¢/kg` | **yes** |
+| `additionalDuties` | 512 | 0 | Extra specific duty on some Ch 99 headings, e.g. `66.6¢/kg` | **yes** |
 | `quotaQuantity` | 0 | 0 | Always empty in this release | no |
 | `addiitionalDuties` | 0 | 0 | Misspelled duplicate key in the API's own schema. Always empty | no |
 
@@ -104,8 +112,9 @@ hardcoded with a citation, or the answer has to say a human is needed.
 ### Field notes that matter for the schema
 
 **`footnotes` is not an index of Chapter 99 coverage, and reading it as one loses 72% of
-the modifications.** Of the 975 base codes cited by Chapter 99 that resolve against the
-export, only **272** carry a footnote on the base side; **703 do not**. `2922.49.30.00` has
+the modifications.** Chapter 99 reaches **2,233** base rows through the codes it cites
+*(chain)*; only **274** of them carry a footnote at all, so **1,959 — 88% — do not**.
+`2922.49.30.00` has
 `footnotes: []` while `9902.04.06` names it explicitly.
 
 Where footnotes do exist they point at 9903 (773) and 9904 (372), and they can be narrower
@@ -115,7 +124,7 @@ Section 301 goes unmentioned.
 
 The reason it cannot work is structural: a Chapter 99 line reaches base codes either by
 naming them in its description, or through a U.S. note listing them — and note 20(b) alone
-covers well over a thousand codes. No footnoting convention could carry that. The 703
+covers well over a thousand codes. No footnoting convention could carry that. The 1,959
 figure counts only the first path, so the real shortfall is larger.
 
 Consequence: **coverage has to be derived from the Chapter 99 side and indexed backwards.**
@@ -190,8 +199,9 @@ Ch 99:  "(provided for in subheading 2922.49.30)"
 Base:   2922.49.30.00   general='6.5%'      ← the cited code + ".00"
 ```
 
-An equality join returns zero rows. 2,556 of 3,336 Chapter 99 rows contain
-`provided for in`, so this affects most of the dataset.
+An equality join returns zero rows. 2,456 of 3,336 rows contain `provided for in` in their
+own text, and 2,950 of the 3,098 coded rows do once ancestors are attached *(chain)* — so
+this affects nearly the whole dataset.
 
 ---
 
@@ -201,15 +211,24 @@ An equality join returns zero rows. 2,556 of 3,336 Chapter 99 rows contain
 alternate rather than sitting in one block. Three levels: chapter notes, then per-subchapter
 U.S. Notes, then Statistical Notes.
 
-**547 of 3,336 rows cite a U.S. note, across 33 distinct note numbers.** Most cited:
+**558 coded rows cite a U.S. note in their own text; 973 do once ancestors are attached**
+*(chain)*, across 35 distinct note numbers.
+
+**A note number does not identify a note.** Of those 973, 689 cite a note "to this
+subchapter" and 124 an "additional U.S. note N to chapter N" — a different collection that
+happens to reuse the numbers. Counting by number alone conflates them, which is why the
+`note` table keys on `(kind, subchapter, number, subdivision)` rather than on the number.
+
+Most cited *(chain, by number, so read with the caveat above)*:
 
 | Note | Cited by | Subject |
 | --- | ---: | --- |
-| 2 | 161 | IEEPA — Mexico, Canada |
+| 2 | 311 | IEEPA — Mexico, Canada; also chapter-level additional notes numbered 2 |
 | 52 | 98 | reciprocal tariffs, headings 9903.05.20–9903.05.84 |
-| 20 | 72 | Section 301 — China |
-| 33 | 51 | Section 232 — automobiles |
-| 16 | 30 | Section 232 — steel, aluminum, copper |
+| 1 | 77 | subchapter III's "in lieu of" default; also chapter 4 dairy additional note 1 |
+| 20 | 66 | Section 301 — China, all under heading 9903.88 |
+| 33 | 57 | Section 232 — automobiles |
+| 16 | 28 | Section 232 — steel, aluminum, copper |
 
 ### Seven kinds of note, and what each is for
 
@@ -272,19 +291,35 @@ in the UI as flagged caveats, not as silent omissions.
 
 ## 4. How Chapter 99 reaches the base schedule
 
-Three different mechanisms, not one. Of the 3,098 Chapter 99 rows that carry a code:
+Three different mechanisms, not one. Reading each provision with its ancestors attached
+*(chain)*, the 3,098 coded rows divide as:
 
 | Path | Rows | Key |
 | --- | ---: | --- |
-| Cites a base code in its own description | 2,203 | `(provided for in subheading 2922.49.30)` |
-| Points at a U.S. note that lists the codes | 558 | `as provided for in U.S. note 20(b)` — the list is in the PDF |
-| Names a country and no product at all | 211 | `articles the product of Mexico` |
+| Names at least one base code somewhere in its chain | 2,571 | `(provided for in subheading 2922.49.30)` |
+| Names no code, but cites a U.S. note | 503 | `as provided for in U.S. note 20(b)` — the list is in the PDF |
+| Names neither | 24 | |
 
-The third path has **no join key to the base schedule**. `9903.01.01` covers every good from
-Mexico; so does each of `9903.05.20`–`9903.05.84` for its own country. A resolver that only
-follows code citations silently loses them, and with them the most commonly applied duties
-in the current schedule. The `rule` table therefore needs a `scope` — whether the rule is
-limited by code or applies to all goods from a country.
+Separately, **401 provisions name a country** (`articles the product of Mexico`), and they
+cut across those three rows rather than forming a fourth.
+
+**This split is not yet the answer, and the earlier version of this table pretended it
+was.** A note citation only puts a provision on the code path if that note *is a list of
+subheadings*; note 20(b) is, and note 2(a) — which defines what "a product of Mexico" means
+— is not. Which notes are lists is not known until the PDF is parsed, so the real division
+between "reaches base codes" and "reaches goods by country" is an output of Step 5, not a
+fact that can be counted beforehand. It is recorded here as pending rather than guessed.
+
+What the design rests on is unchanged and can be checked by hand. `9903.01.01` reads:
+
+> Except for products described in headings 9903.01.02 … **articles the product of Mexico**,
+> as provided for in U.S. note 2(a) to this subchapter
+
+It cites a note and names a country, and it names **no base code at all** — so it has no
+join key to the base schedule, and neither does each of `9903.05.20`–`9903.05.84` for its
+own country. A resolver that only follows code citations loses them, and with them the most
+commonly applied duties in the current schedule. The `rule` table therefore needs a `scope`
+— whether the rule is limited by code or applies to all goods from a country.
 
 **Citations are 8-digit, base rows are 10.** Matching is prefix matching on the dotted
 string, anchored at a separator (`x == c or x.startswith(c + '.')`) — a bare `startswith`
@@ -299,8 +334,8 @@ magnitude, which is why it is materialised rather than computed per query:
 
 ### A base code usually has more than one rule
 
-Of the 994 base codes cited, **439 — 44% — are cited by more than one Chapter 99 rule**.
-`3808.92.15` is cited by 34.
+Of the 1,000 cited codes that resolve against the base export, **507 — 51% — are cited by
+more than one Chapter 99 provision** *(chain)*. `3808.92.15` is cited by 34.
 
 This is not messy data. The base code is a bucket, and a 9902 provision picks one substance
 out of it. Four rules cite `2922.49.30`, whose own description is "Products described in
@@ -317,8 +352,8 @@ additional U.S. note 3 to section VI":
 and that identity exists only in the Chapter 99 description. A query keyed on
 `base_hts + country` therefore returns candidates, not an answer.
 
-**1,009 rules carry a CAS number**, which is an exact, globally unique substance
-identifier. Extracting them turns a third of Chapter 99 into a deterministic lookup for
+**1,034 provisions carry a CAS registry number** — 1,028 distinct numbers — which is an
+exact, globally unique substance identifier. Extracting them turns a third of Chapter 99 into a deterministic lookup for
 anyone who knows what they are importing.
 
 ### Alternatives or stacking

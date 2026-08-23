@@ -376,7 +376,7 @@ since the check above holds for 2026HTSRev16 and is not guaranteed by the format
 ---
 
 ## D-0013 — Rate kind is an operator; its operands are separate columns
-**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-c
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-c · evidence corrected by D-0022
 
 **Context.** "Rates must be computable, not just displayable" is an explicit requirement,
 and a single `numeric` cannot hold what the schedule actually prints: 5,863 pure ad valorem
@@ -447,7 +447,7 @@ the export's document order, and a constraint on any future loader.
 ---
 
 ## D-0015 — Store a citation as printed and as resolved, in different tables
-**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-a
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-a · evidence corrected by D-0022
 
 **Context.** Chapter 99 cites 8-digit subheadings — `(provided for in subheading
 2922.49.30)` — while the rate-bearing rows in the base export are 8 or 10 digits
@@ -483,7 +483,7 @@ without trusting it.
 ---
 
 ## D-0016 — Notes are tables, and list-type notes expand into codes
-**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-e
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · settles P-e · evidence corrected by D-0022
 
 **Context.** 547 provisions across 33 note numbers define their scope by pointing at a U.S.
 note rather than by naming codes. `9903.88.01` covers "the subheadings enumerated in U.S.
@@ -516,7 +516,7 @@ lost entirely (P-i).
 ---
 
 ## D-0017 — Nothing the parser cannot read is discarded
-**Date:** 2026-08-23 · **Area:** parser · **Status:** accepted · settles P-d
+**Date:** 2026-08-23 · **Area:** parser · **Status:** accepted · settles P-d · evidence corrected by D-0022
 
 **Context.** A prose tariff schedule will always leave residue: ~30 rate strings that are
 sentences, 69 cited codes that resolve to nothing, countries written in forms the pattern
@@ -544,7 +544,7 @@ less likely.
 ---
 
 ## D-0018 — A provision's scope can be a country instead of a code
-**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · evidence corrected by D-0022
 
 **Context.** Of the 3,098 coded Chapter 99 rows, 2,203 cite a base code in their own
 description and 558 point at a note that lists codes. The remaining 211 name a country and
@@ -576,7 +576,7 @@ out.
 ---
 
 ## D-0019 — Goods identity is its own table, because the code does not choose
-**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · evidence corrected by D-0022
 
 **Context.** Of the 994 base codes Chapter 99 cites, 439 — 44% — are cited by more than one
 provision; `3808.92.15` is cited by 34. This is not messy data. The base code is a bucket
@@ -636,7 +636,7 @@ cascades `rule_base_match` away.
 ---
 
 ## D-0021 — What became of the scaffold's three tables
-**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted
+**Date:** 2026-08-23 · **Area:** schema · **Status:** accepted · evidence corrected by D-0022
 
 **Context.** The exercise supplies `hts_base`, `rule` and `rule_edge` and calls them "a floor,
 not a ceiling". Extending them is expected; renaming and removing their columns is not, and a
@@ -699,6 +699,82 @@ that is right for a month.
 **Feeds.** SUBMISSION.md §2
 
 ---
+
+---
+
+## D-0022 — Re-derive the Chapter 99 evidence from the payload the workflow actually fetches
+**Date:** 2026-08-23 · **Area:** process · **Status:** accepted
+
+**Context.** Part 2's first real run refused to start:
+
+```
+ManifestError: /data/raw/2026HTSRev16/ch99.json is 2,060,842 B,
+               but the manifest recorded 1,992,914 B
+```
+
+The file on disk hashed to `7283b218…` against the manifest's `5a7ca6b0…`; `base.json` and
+the PDF matched exactly. `ch99.json` had been written at 12:17 against a manifest written
+at 10:56, by something outside the scraper — an exploratory `curl` during the data
+analysis. Re-running Part 1 fetched `5a7ca6b0…` from the API, confirming that the larger
+file was never what this pipeline serves. **Every Chapter 99 count in `DATA_INVENTORY.md`
+had been measured against it.**
+
+Two of the differences hold under an identical definition, so they are the payload and not
+the measurement: `additionalDuties` non-empty is 512, not 810, and rows containing
+"provided for in" are 2,456, not 2,556.
+
+Re-deriving the rest exposed a second, unrelated error. The counts had been taken from each
+row's own `description`, but a provision inherits its ancestors' scope — which is how the
+schedule is read, and what the parser will do. Read that way `9903.01.01` is:
+
+> Except for products described in headings 9903.01.02 … **articles the product of
+> Mexico**, as provided for in U.S. note 2(a) to this subchapter
+
+It cites a note, but note 2(a) defines what "a product of Mexico" means; it is not a list
+of subheadings. So a note citation only puts a provision on the code path when that note
+*is* a list, and which notes are lists is unknown until the PDF is parsed.
+
+**Options.**
+- Correct the numbers at Step 7, when the parser produces real ones — one pass, but every
+  decision entry in between ships citing evidence already known to be wrong.
+- Re-derive now what can be derived offline, and mark the rest as pending.
+- Drop the counts and argue the design qualitatively — removes the problem by removing the
+  evidence, which is the wrong direction for a submission graded on reasoning.
+
+**Decision.** The second. Corrected in `DATA_INVENTORY.md`, `SCHEMA.md` and the
+`db/schema.sql` comments, with counts taken over the ancestor chain marked *(chain)*:
+
+| Figure | Was | Is |
+| --- | ---: | ---: |
+| `additionalDuties` non-empty | 810 | **512** |
+| `general` / `special` non-empty | 2,220 / 2,372 | 2,219 / 2,371 |
+| rows containing "provided for in" | 2,556 | 2,456 (2,950 *chain*) |
+| provisions citing a U.S. note | 547, 33 numbers | 558 own-row, **973 *chain***, 35 numbers |
+| distinct base codes cited | 1,044 | 1,050 |
+| exact / prefix / unresolvable | 290 / 685 / 69 | **302 / 698 / 50** |
+| cited codes with >1 provision | 439 of 994 (44%) | **507 of 1,000 (51%)** |
+| provisions with a CAS number | 1,009 | **1,034** (1,028 distinct) |
+| provisions with an exclusion | 206, 681 edges | 233 own-row, **324 *chain***, 864 codes named |
+| base rows reached, carrying a footnote | 272 of 975 | **274 of 2,233** |
+| three-path split | 2,203 / 558 / 211 | **pending Step 5** |
+
+Unchanged and re-confirmed: every base-schedule figure, since `base.json` hashed
+identically throughout; `2922.49.30` cited by exactly four 9902 provisions naming CAS
+6212-33-5, 3577-63-7, 619-05-6 and 77820-58-7; `3808.92.15` cited by 34; expansion factors
+1 / 4 / 108; `Free` 1,364 and `no_change` 204.
+
+**Tradeoff.** The three-path split was the cleanest sentence in the inventory and is now a
+paragraph saying the number is not yet knowable. That is the honest state, and D-0018 does
+not depend on it: `9903.01.01` names no base code at all, which can be checked by reading
+one row, so `rule.scope` is needed whether the count is 211 or 358.
+
+The deeper cost is to trust in the remaining numbers. They were produced by the same
+process that produced the wrong ones, and only the two under identical definitions were
+proven wrong by the payload rather than by a changed measurement. Every figure that
+survives Step 5 should be replaced by a parser output, which is checkable, rather than an
+ad-hoc count, which is not.
+
+**Feeds.** SUBMISSION.md §5, §6
 
 # Pending decisions
 

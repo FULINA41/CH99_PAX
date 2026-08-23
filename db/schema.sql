@@ -157,10 +157,12 @@ CREATE INDEX hts_base_trgm_idx   ON hts_base USING gin (full_description gin_trg
 -- The same rate model as hts_base, plus the two things Chapter 99 adds: operators
 -- that are relative to the base rate ('additive', 'no_change'), and a scope.
 --
--- scope exists because 211 provisions name a country and no product at all
--- ("articles the product of Mexico"). They have no join key to the base schedule,
--- and a resolver that only follows code citations drops them silently — along with
--- the most frequently applied duties in the current schedule. D-0018.
+-- scope exists because 358 provisions name a country and no base code of their own
+-- ("articles the product of Mexico"). Those have no join key to the base schedule, and
+-- a resolver that only follows code citations drops them silently — along with the most
+-- frequently applied duties in the current schedule. D-0018. How many end up in each
+-- scope is settled by the resolver, since a note citation only reaches base codes when
+-- that note is a list of subheadings.
 CREATE TABLE rule (
   hts         text PRIMARY KEY,
   heading     text NOT NULL,
@@ -181,7 +183,7 @@ CREATE TABLE rule (
   rate_specific_amount numeric,
   rate_specific_unit   text,
 
-  -- A second duty stacked on top of rate_*, always additive. 810 provisions carry
+  -- A second duty stacked on top of rate_*, always additive. 512 provisions carry
   -- one; 50 of those read "No additional duty", which is a stated zero rather than a
   -- missing value, so the text is kept beside the parsed operands.
   additional_duty_text   text,
@@ -219,11 +221,11 @@ CREATE INDEX rule_edge_target_idx ON rule_edge (target_hts, edge_type);
 
 -- Which goods a provision is about, when the HTS code cannot say.
 --
--- 44% of the base codes Chapter 99 cites are cited by more than one provision;
+-- 51% of the base codes Chapter 99 cites are cited by more than one provision;
 -- 3808.92.15 is cited by 34. Four provisions cite 2922.49.30, each naming a
 -- different substance by CAS number. The classification does not choose between
 -- them — the identity of the goods does, and that identity is only in the prose.
--- 1,009 provisions carry a CAS number, which is exact and globally unique. D-0019.
+-- 1,034 provisions carry a CAS registry number, exact and globally unique. D-0019.
 CREATE TABLE rule_identifier (
   rule_hts text NOT NULL REFERENCES rule(hts) ON DELETE CASCADE,
   kind     text NOT NULL CHECK (kind IN ('cas')),
@@ -255,9 +257,13 @@ CREATE INDEX rule_country_code_idx ON rule_country (country_code, relation);
 -- U.S. notes, from the PDF
 -- ===========================================================================
 
--- 547 provisions across 33 note numbers take their scope from a note rather than
--- from codes they name. 9903.88.01 covers "the subheadings enumerated in U.S. note
--- 20(b)", and that list exists only in the PDF. D-0016.
+-- 973 provisions cite a U.S. note, across 35 distinct numbers, and many take their scope
+-- from it rather than from codes they name. 9903.88.01 covers "the subheadings enumerated
+-- in U.S. note 20(b)", and that list exists only in the PDF. D-0016.
+--
+-- The number alone does not identify a note: "U.S. note 2 to subchapter III" and
+-- "additional U.S. note 2 to chapter 4" are different notes, which is why the unique key
+-- below is the whole tuple and not note_number.
 --
 -- NULLS NOT DISTINCT so two chapter-level notes with no subdivision collide on the
 -- unique key instead of both being inserted.

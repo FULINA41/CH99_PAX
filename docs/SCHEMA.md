@@ -71,9 +71,9 @@ erDiagram
 | `rule` | 3,098 | fact | Chapter 99 provisions: what modifies those duties | Step two of every duty calculation |
 | `rule_edge` | ~2,900 | fact | The codes a provision names, unresolved | Auditing the matcher; following exclusions |
 | `rule_country` | ~250 | fact | The countries a provision names | The moment a user types "China" |
-| `rule_identifier` | ~1,009 | fact | CAS numbers | Choosing between several provisions on one base code |
+| `rule_identifier` | ~1,034 | fact | CAS numbers | Choosing between several provisions on one base code |
 | `note` | ~120 | fact | U.S. notes from the PDF | A user asking "on what authority" |
-| `rule_note` | 547 | fact | A provision citing a note | Jumping from a provision to the legal text |
+| `rule_note` | ~973 | fact | A provision citing a note | Jumping from a provision to the legal text |
 | `note_subheading` | thousands | fact | The codes a list-type note prints | Working out what Section 301 covers |
 | `rule_base_match` | tens of thousands | **interpretation** | Which base rows a provision reaches | The main query once a user supplies a code |
 | `parse_issue` | non-empty | honesty | Everything that parsed into nothing | Self-review before submission; telling a user "I could not read this one" |
@@ -194,7 +194,7 @@ The same rate model as `hts_base`, plus the two things Chapter 99 adds.
 | `full_description` | Ancestor chain plus own | **Citations, countries and CAS numbers are all extracted from this column**, not from `description`, because a provision inherits its ancestors' scope — that is how the schedule is read legally |
 | `scope` | `by_code` \| `by_country_all_goods` \| `unknown` | **Decides which query path a rule takes.** See below; without it the model is wrong |
 | `rate_*` (5 columns) | As `hts_base` | Computing the final duty |
-| `additional_duty_*` (4 columns) | A second duty on top of `rate_*`, always additive | 810 provisions carry one, e.g. `66.6¢/kg`. **50 read "No additional duty" — a stated zero, not a missing value**, so the text is kept beside the number; otherwise it reads as "field absent" and gets skipped |
+| `additional_duty_*` (4 columns) | A second duty on top of `rate_*`, always additive | 512 provisions carry one, e.g. `66.6¢/kg`. **50 read "No additional duty" — a stated zero, not a missing value**, so the text is kept beside the number; otherwise it reads as "field absent" and gets skipped |
 | `source_fetch_id` | Which download | Provenance |
 | `full_description_tsv` | Generated column | Searching provisions for "steel China" |
 
@@ -216,16 +216,23 @@ opens "Notwithstanding U.S. note 1 to this subchapter".
 
 Of the 3,098 coded provisions:
 
-| `scope` | Rows | Example | How it reaches goods |
-| --- | ---: | --- | --- |
-| `by_code` | 2,761 | `(provided for in subheading 2922.49.30)` | `rule_base_match` |
-| `by_country_all_goods` | 211 | `articles the product of Mexico` | `rule_country` alone — **no join key to `hts_base` exists** |
-| `unknown` | — | | Placed here rather than guessed |
+| `scope` | Example | How it reaches goods |
+| --- | --- | --- |
+| `by_code` | `(provided for in subheading 2922.49.30)` | `rule_base_match` |
+| `by_country_all_goods` | `articles the product of Mexico` | `rule_country` alone — **no join key to `hts_base` exists** |
+| `unknown` | | Placed here rather than guessed |
 
-`9903.01.01` covers *every* good from Mexico; so does each of `9903.05.20`–`9903.05.84`
-for its own country. Materialising those against all 26,246 base rows would cost millions
-of rows per provision; leaving them out of the resolved layer would lose the most
-frequently applied duties in the current schedule.
+**How many land in each is a resolver output, not a count that can be taken beforehand.**
+2,571 provisions name a base code somewhere in their ancestor chain and 527 name none; of
+those 527, 358 name a country. The rest cite a note, and a note only leads to base codes
+when it is a *list of subheadings* — note 20(b) is, note 2(a) is not — which is not known
+until the PDF is parsed.
+
+What is certain by inspection: `9903.01.01` names no base code at all and covers *every*
+good from Mexico, as does each of `9903.05.20`–`9903.05.84` for its own country.
+Materialising those against all 26,246 base rows would cost millions of rows per provision;
+leaving them out of the resolved layer would lose the most frequently applied duties in the
+current schedule.
 
 **The practical consequence: answering "what applies to this shipment" takes two queries,
 not one.** A code query and a country query. Forgetting the second understates the duty on
@@ -240,8 +247,8 @@ Chinese goods by 25 points.
 | Column | Meaning | When it is used |
 | --- | --- | --- |
 | `source_hts` | The provision, FK to `rule` | |
-| `edge_type` | `references` — "provided for in X" · `excludes` — "except for products of Y" | **`excludes` is what decides whether a provision still applies**: 206 provisions carry 681 exclusion edges, and exclusions form a graph, not a list |
-| `target_hts` | The code as printed. **No foreign key, no normalisation** | ① auditing `rule_base_match` against what was actually cited ② **the 69 unresolvable codes live here** — some are real codes retired in this revision, some are regex noise (`2022`, `0090`), and both are worth keeping |
+| `edge_type` | `references` — "provided for in X" · `excludes` — "except for products of Y" | **`excludes` is what decides whether a provision still applies**: 324 provisions carry an exclusion, naming 864 other Chapter 99 codes between them, and exclusions form a graph, not a list |
+| `target_hts` | The code as printed. **No foreign key, no normalisation** | ① auditing `rule_base_match` against what was actually cited ② **the 50 unresolvable codes live here** — some are real codes retired in this revision, some are regex noise (`2022`, `0090`), and both are worth keeping |
 
 ---
 
@@ -269,8 +276,8 @@ this data cannot answer.
 | `kind` | `cas` today | A CHECK constraint, so adding a kind is a deliberate act |
 | `value` | `619-05-6` | **Choosing between several 9902 provisions on one base code.** A user who can state the CAS number turns candidates into an answer |
 
-Of the 994 base codes Chapter 99 cites, **439 — 44% — are cited by more than one
-provision**; `3808.92.15` is cited by 34. Not messy data: the base code is a bucket and a
+Of the 1,000 cited codes that resolve against the base export, **507 — 51% — are cited by
+more than one provision**; `3808.92.15` is cited by 34. Not messy data: the base code is a bucket and a
 9902 provision picks one substance out of it.
 
 ```
@@ -282,17 +289,21 @@ provision**; `3808.92.15` is cited by 34. Not messy data: the base code is a buc
 ```
 
 **The classification does not choose between these — the identity of the goods does.** A
-query keyed on base code plus country returns candidates, not an answer. 1,009 provisions
-carry a CAS number, which is exact and globally unique, so for those the choice becomes a
-lookup (D-0019).
+query keyed on base code plus country returns candidates, not an answer. 1,034 provisions
+carry a CAS registry number — 1,028 distinct ones — exact and globally unique, so for those
+the choice becomes a lookup (D-0019).
 
 ---
 
 ## 9. `note`, `rule_note`, `note_subheading` — the PDF
 
-547 provisions across 33 note numbers take their scope from a note rather than from codes
-they name. `9903.88.01` covers "the subheadings enumerated in U.S. note 20(b)", and that
-list exists **only in the PDF**.
+973 provisions cite a U.S. note, across 35 distinct numbers, and many take their scope
+from it rather than from codes they name. `9903.88.01` covers "the subheadings enumerated in
+U.S. note 20(b)", and that list exists **only in the PDF**.
+
+**The number alone does not identify a note.** 689 of those citations point at a note "to
+this subchapter" and 124 at an "additional U.S. note N to chapter N" — a different
+collection reusing the same numbers. That is why the unique key below is the whole tuple.
 
 ### `note`
 
@@ -373,7 +384,7 @@ of magnitude, which is why it is materialised rather than recomputed per query:
 | `detail` | The offending fragment, verbatim | The first thing read when fixing the parser |
 | `created_at` | When | |
 
-Expected residue: ~30 rate strings that are English sentences, 69 cited codes that resolve
+Expected residue: ~30 rate strings that are English sentences, 50 cited codes that resolve
 to nothing, countries written in forms the pattern does not cover. Recorded rather than
 dropped (D-0017).
 
