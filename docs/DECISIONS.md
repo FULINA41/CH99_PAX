@@ -327,6 +327,16 @@ numbered entry above once decided — do not decide them here.
   as the Part 3 shape, so revisit that before designing Part 3 — and check then whether an
   agent wants anything the schema does not already give a UI, such as text worth
   retrieving over rather than joining.
+- **P-h · Alternatives versus stacking.** Several 9902 provisions on one base code are
+  treated as mutually exclusive alternatives, because a shipment is one substance and their
+  descriptions are disjoint — but **nothing in the data states this**, so it is an
+  assumption that belongs in SUBMISSION.md §5. A 9902 reduction combined with a 9903
+  additional duty is not an assumption: note 20(a) states that goods eligible for
+  subchapter II reductions remain subject to the Section 301 duty.
+- **P-i · Effectivity.** Expired provisions are marked in the PDF by grey shading, which
+  text extraction destroys, and by 161 "Compiler's note" asides in prose. The JSON carries
+  no effective or expiry field at all. Decide whether to extract the compiler notes into a
+  field, and how the UI says "this may no longer be in force".
 - **P-e · Notes as a table.** `9903.88.01` defines its own scope by pointing at
   "the subheadings enumerated in U.S. note 20(b)", whose list exists only in the notes
   PDF. How are notes stored, and how does a rule cite one?
