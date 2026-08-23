@@ -63,6 +63,12 @@ commands that ran, and their real output. Separate what is finished from what is
 open, and say plainly when something was skipped, failed, or left half-done — the journal
 convention below is worthless if the reporting above it is optimistic.
 
+**Be brief.** Report in as few words as the facts need. Lead with the result, name what
+changed, give the evidence for anything claimed to work — then stop. No recaps of what was
+already agreed, no restating a decision's rationale that is already in `DECISIONS.md`, no
+summary paragraph after a table that says what the table said. This applies to documents
+too: a section that repeats another section is a maintenance cost, not thoroughness.
+
 **Committing needs approval, and so does starting the next step.** When executing a plan,
 finish the step, run its verification, and report — then stop. Do not commit and do not
 begin the following step until the user approves. Approval covers both: the commit and the

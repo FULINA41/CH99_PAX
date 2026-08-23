@@ -1,6 +1,14 @@
 # Part 1 — Scraper design
 
-**Date:** 2026-08-21 · **Status:** awaiting review
+**Date:** 2026-08-21 · **Status:** implemented, with four amendments
+
+> This is the design as written **before** implementation, kept unedited as the record of
+> what was intended. For the system as it actually stands, read
+> [`docs/PART1_SCRAPER.md`](../../PART1_SCRAPER.md). Building it amended this document in
+> four places, each recorded in `DECISIONS.md`: D-0007 (fetch tasks report rather than
+> raise), D-0008 (the task timeout is derived from the retry policy), D-0009 (the release
+> re-check cannot fail the run) and D-0011 (a source whose endpoint cannot serve the
+> pinned release is skipped).
 
 A Hatchet workflow that fetches the three USITC sources and lands them in durable storage
 with enough provenance to answer "where did this come from, and when?".
