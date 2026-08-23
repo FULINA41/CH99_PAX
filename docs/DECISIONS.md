@@ -322,6 +322,11 @@ numbered entry above once decided — do not decide them here.
 - **P-d · Unparsed prose.** What happens to a description whose cross-reference or rate
   does not match any pattern — dropped, flagged, or stored with a parse-status column?
   Silent loss is the failure mode the parser is most likely to have.
+- **P-g · Part 3 is intended to be an agent.** Stated 2026-08-22, ahead of Part 2 and
+  explicitly not a constraint on it. It may amend the earlier choice of a rate explainer
+  as the Part 3 shape, so revisit that before designing Part 3 — and check then whether an
+  agent wants anything the schema does not already give a UI, such as text worth
+  retrieving over rather than joining.
 - **P-e · Notes as a table.** `9903.88.01` defines its own scope by pointing at
   "the subheadings enumerated in U.S. note 20(b)", whose list exists only in the notes
   PDF. How are notes stored, and how does a rule cite one?
