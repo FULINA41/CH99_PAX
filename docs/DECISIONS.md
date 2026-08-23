@@ -271,6 +271,39 @@ correctness gate rather than an annotation.
 
 ---
 
+## D-0010 — A payload says whether the directory's release actually speaks for it
+**Date:** 2026-08-22 · **Area:** scraper · **Status:** superseded by D-0011
+
+**Context.** Found by acceptance check 5. Payloads are stored under `data/raw/<release>/`,
+but only the notes PDF endpoint accepts a release parameter; `exportList` ignores it and
+serves whatever is current. So `data/raw/2026HTSRev15/` holds a genuine Rev15 PDF beside
+`ch99.json` and `base.json` that were Rev16 at fetch time. The directory name asserts a
+revision for all three files and is true of one. `Source.pinnable` already knows which is
+which and each entry's `url` shows it, but nothing said so, and Part 2 would reasonably
+read that directory as a complete snapshot of one revision.
+
+**Options.**
+- Per-entry `release_pinned` in the manifest — the information exists, so declare it.
+- Refuse `--release` when it does not match the current release — safe, but removes the
+  ability to re-fetch a historical PDF, which is why the flag exists.
+- Name mixed directories for what they hold, e.g. `2026HTSRev15+exports@Rev16` — the name
+  stops lying, at the cost of unstable paths every downstream reader must parse.
+- Skip non-pinnable sources when a non-current release is pinned, recording `skipped` —
+  neither lies nor overwrites, but adds a fourth status and a partial-directory case.
+
+**Decision.** The first. `fetch_source` records
+`release_pinned = source.pinnable and release is not None`, and it rides into the manifest
+and the fetch result. A reader can now tell which bytes the directory name speaks for.
+
+**Tradeoff.** This buys knowledge, not protection. The related hazard is untouched: a
+re-run pinned to an older release re-downloads the exports, finds the hash different from
+the correct historical copy, and replaces it — quietly turning a good snapshot into a
+mixed one while reporting a normal `fetched`. Reaching that requires passing `--release`
+with a stale value after a revision has landed; the documented command never does. The
+fourth option above is the fix if it ever matters, and would supersede this entry.
+
+**Feeds.** SUBMISSION.md §2, §5
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

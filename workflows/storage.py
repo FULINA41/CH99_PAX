@@ -12,8 +12,10 @@ MANIFEST_NAME = "manifest.json"
 PART_SUFFIX = ".part"
 READ_CHUNK = 1024 * 1024
 
-# Statuses that mean the payload is on disk and trustworthy.
-LANDED = frozenset({"fetched", "unchanged"})
+# A source has landed when we know the bytes sitting at its path -- fetched, verified
+# unchanged, or skipped with an earlier payload still there. A failed fetch knows nothing.
+def _has_landed(entry: dict[str, Any]) -> bool:
+    return bool(entry.get("sha256"))
 
 
 def data_root() -> Path:
@@ -86,9 +88,7 @@ def sha256_of(path: Path) -> str:
 
 def build_manifest(release: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
     # `complete` is what downstream code reads before trusting the directory.
-    landed = {
-        entry["source_key"] for entry in entries if entry.get("status") in LANDED
-    }
+    landed = {entry["source_key"] for entry in entries if _has_landed(entry)}
     return {
         "release": release,
         "complete": landed >= SOURCE_KEYS,

@@ -51,6 +51,7 @@ def fetch_source(
     directory: Path,
     *,
     client: httpx.Client | None = None,
+    live_release: str | None = None,
     force: bool = False,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
@@ -61,19 +62,32 @@ def fetch_source(
         release: Release to pin the URL to, where the endpoint supports it.
         directory: The release directory the payload belongs in.
         client: An httpx client to reuse. One is created and closed when omitted.
+        live_release: The release the API is currently serving. When it differs from
+            ``release`` and this endpoint cannot pin, the fetch is skipped rather than
+            overwriting a historical payload with current data.
         force: Rewrite the payload even when the bytes are identical.
         sleep: Injection point for the backoff delay, so tests do not wait.
 
     Returns:
-        A JSON-serializable result carrying ``status`` (``fetched``, ``unchanged`` or
-        ``failed``), the sha256, byte count, http status, attempts, duration and error.
+        A JSON-serializable result carrying ``status`` (``fetched``, ``unchanged``,
+        ``skipped`` or ``failed``), the sha256, byte count, http status, attempts,
+        duration and error.
 
     This never raises. A failure is reported as a result so the summarize task still
     runs and the manifest still covers every source (D-0007).
     """
     url = source.url(release)
     dest = Path(directory) / source.filename
+    # Whether this payload actually belongs to the release the directory is named for.
+    # False for the bulk exports: their endpoint ignores the parameter and serves current.
+    release_pinned = source.pinnable and release is not None
     started = time.monotonic()
+
+    # Asking this endpoint for a past release would silently return current data and
+    # overwrite the historical payload that is already on disk. Leave it alone.
+    if release and live_release and release != live_release and not source.pinnable:
+        return _result(source, url, dest, "skipped", 0, started,
+                       release_pinned=False, **_on_disk(dest))
     owned = client is None
     client = client or default_client()
     error: str | None = None
@@ -92,13 +106,21 @@ def fetch_source(
                 error = f"{type(exc).__name__}: {exc}"
             else:
                 return _result(source, url, dest, status, attempt, started,
-                               http_status=http_status, sha256=sha, size=size)
+                               release_pinned=release_pinned, http_status=http_status,
+                               sha256=sha, size=size)
             break
     finally:
         if owned:
             client.close()
 
-    return _result(source, url, dest, "failed", attempt, started, error=error)
+    return _result(source, url, dest, "failed", attempt, started,
+                   release_pinned=release_pinned, error=error)
+
+
+def _on_disk(dest: Path) -> dict[str, Any]:
+    if not dest.exists():
+        return {}
+    return {"sha256": sha256_of(dest), "size": dest.stat().st_size}
 
 
 def _attempt(
@@ -137,6 +159,7 @@ def _result(
     attempts: int,
     started: float,
     *,
+    release_pinned: bool,
     http_status: int | None = None,
     sha256: str | None = None,
     size: int | None = None,
@@ -147,6 +170,7 @@ def _result(
         "url": url,
         "path": str(dest),
         "status": status,
+        "release_pinned": release_pinned,
         "http_status": http_status,
         "bytes": size,
         "sha256": sha256,

@@ -40,12 +40,17 @@ def test_clearing_stale_parts_spares_finished_payloads(tmp_path):
 @pytest.mark.parametrize(
     "entries, complete",
     [
-        ([("ch99", "fetched"), ("base", "unchanged"), ("notes_pdf", "fetched")], True),
-        ([("ch99", "fetched"), ("base", "failed"), ("notes_pdf", "fetched")], False),
-        ([("ch99", "fetched"), ("base", "unchanged")], False),
+        ([("ch99", "fetched", "a"), ("base", "unchanged", "b"), ("notes_pdf", "fetched", "c")], True),
+        ([("ch99", "fetched", "a"), ("base", "failed", None), ("notes_pdf", "fetched", "c")], False),
+        ([("ch99", "fetched", "a"), ("base", "unchanged", "b")], False),
+        # Skipped protects a historical payload; the directory is still complete.
+        ([("ch99", "skipped", "a"), ("base", "unchanged", "b"), ("notes_pdf", "fetched", "c")], True),
+        ([("ch99", "skipped", None), ("base", "unchanged", "b"), ("notes_pdf", "fetched", "c")], False),
     ],
 )
-def test_manifest_claims_completeness_only_when_every_source_landed(entries, complete):
-    payload = [{"source_key": key, "status": status} for key, status in entries]
+def test_manifest_claims_completeness_only_when_every_payload_is_known(entries, complete):
+    payload = [
+        {"source_key": key, "status": status, "sha256": sha} for key, status, sha in entries
+    ]
 
     assert build_manifest(RELEASE, payload)["complete"] is complete

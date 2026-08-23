@@ -52,7 +52,12 @@ def _report(run_id: str) -> None:
     tally = {"fetched": 0, "unchanged": 0, "failed": 0}
     for key, status, size, sha, error, *_ in rows:
         tally[status] = tally.get(status, 0) + 1
-        detail = f"{size:>12,} B  sha {sha[:8]}…" if size else f"  {error or ''}"
+        if status == "skipped":
+            detail = "  endpoint cannot serve a past release"
+        elif size:
+            detail = f"{size:>12,} B  sha {sha[:8]}…"
+        else:
+            detail = f"  {error or ''}"
         print(f"  {key:<12} {status:<10}{detail}")
 
     counts = ", ".join(f"{n} {name}" for name, n in tally.items() if n)

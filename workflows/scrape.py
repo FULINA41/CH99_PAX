@@ -33,10 +33,16 @@ scrape_workflow = hatchet.workflow(name="ScrapeHTS", input_validator=ScrapeInput
 
 @scrape_workflow.task()
 def resolve_release(input: ScrapeInput, ctx: Context) -> dict[str, Any]:
+    # Resolved even when a release is pinned: without knowing what the API is serving
+    # now, a fetch cannot tell a current pin from a stale one (D-0011).
+    live = current_release()
+
     if input.release:
-        release, pinned = {"name": input.release, "title": None}, True
+        same = input.release == live["name"]
+        release = {"name": input.release, "title": live["title"] if same else None}
+        pinned = True
     else:
-        release, pinned = current_release(), False
+        release, pinned = live, False
 
     directory = release_dir(release["name"])
     directory.mkdir(parents=True, exist_ok=True)
@@ -47,7 +53,12 @@ def resolve_release(input: ScrapeInput, ctx: Context) -> dict[str, Any]:
     if swept:
         ctx.log(f"cleared {len(swept)} stale .part file(s) left by an earlier run")
 
-    return {"release": release, "directory": str(directory), "pinned": pinned}
+    return {
+        "release": release,
+        "directory": str(directory),
+        "pinned": pinned,
+        "live_release": live["name"],
+    }
 
 
 def _fetch(key: str, input: ScrapeInput, ctx: Context) -> dict[str, Any]:
@@ -58,8 +69,13 @@ def _fetch(key: str, input: ScrapeInput, ctx: Context) -> dict[str, Any]:
         source_by_key(key),
         release["name"],
         Path(resolved["directory"]),
+        live_release=resolved["live_release"],
         force=input.force,
     )
+
+    if result["status"] == "skipped":
+        ctx.log(f"skipped {key}: its endpoint cannot serve {release['name']}, "
+                f"the API is on {resolved['live_release']}")
 
     if result["status"] == "failed":
         # The task itself succeeds so that summarize still runs (D-0007); this log line

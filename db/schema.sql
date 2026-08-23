@@ -42,7 +42,7 @@ CREATE TABLE source_fetch (
   url           text NOT NULL,
   path          text,
   status        text NOT NULL
-    CHECK (status IN ('fetched','unchanged','failed')),
+    CHECK (status IN ('fetched','unchanged','skipped','failed')),
   http_status   int,
   bytes         bigint,
   sha256        text,
