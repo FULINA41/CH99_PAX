@@ -30,8 +30,25 @@ graded write-up and must be filled in as work progresses, not at the end.
   assessed. Do not replace it with a plain script.
 - When a domain interpretation is ambiguous, record the assumption in
   `SUBMISSION.md` and move on.
+- **Docstrings go on the entry points, in Google style** — a summary line, then `Args:` /
+  `Returns:` / `Raises:` sections where they carry something the signature does not. An
+  entry point is what a caller outside this codebase reaches for: `fetch_source`,
+  `current_release`, `record_fetch`. Everything else — helpers, dataclass methods,
+  plumbing that only exists to serve an entry point — gets none, whether or not another
+  module imports it. Where such a function needs explaining, the explanation is a comment
+  on the line that earns it, and it says *why*, since *what* is already in the code.
+- **Tests assert behaviour, not existence.** A test earns its place by pinning down what
+  the code does under one named condition — "an interrupted write leaves nothing at the
+  target path", "a 404 is not retried". Do not write tests that check a value is non-empty,
+  that a key is present, or that a function returns the type it declares: they pass whether
+  or not the behaviour is correct. Each test should read as one sentence, with one reason
+  to fail.
 - Every technical decision gets written down as it is made — see **Decision log** below.
   This is not optional bookkeeping; it is how `SUBMISSION.md` gets written.
+- **Commit subjects are one line, ten words or fewer, and there is no body.** The reasoning
+  belongs in `docs/DECISIONS.md` and `docs/JOURNAL.md`, where it is searchable and can be
+  superseded; a commit message cannot be corrected without rewriting history, which this
+  submission forbids. Keep the `Co-Authored-By` trailer.
 
 ## Working with the user
 
@@ -45,6 +62,18 @@ searches need no announcement.
 commands that ran, and their real output. Separate what is finished from what is still
 open, and say plainly when something was skipped, failed, or left half-done — the journal
 convention below is worthless if the reporting above it is optimistic.
+
+**Be brief.** Report in as few words as the facts need. Lead with the result, name what
+changed, give the evidence for anything claimed to work — then stop. No recaps of what was
+already agreed, no restating a decision's rationale that is already in `DECISIONS.md`, no
+summary paragraph after a table that says what the table said. This applies to documents
+too: a section that repeats another section is a maintenance cost, not thoroughness.
+
+**Committing needs approval, and so does starting the next step.** When executing a plan,
+finish the step, run its verification, and report — then stop. Do not commit and do not
+begin the following step until the user approves. Approval covers both: the commit and the
+step after it. A commit made before review has to be reverted or amended to change, and
+amending is not available here — the submission requires history to stand as written.
 
 Write both in the user's language; code, comments, and committed documents stay in English.
 

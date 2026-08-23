@@ -18,6 +18,41 @@ BEGIN;
 DROP TABLE IF EXISTS rule_edge CASCADE;
 DROP TABLE IF EXISTS rule CASCADE;
 DROP TABLE IF EXISTS hts_base CASCADE;
+DROP TABLE IF EXISTS source_fetch CASCADE;
+
+-- One row per source per scraper run: where a payload came from, and when.
+--
+-- The HTSUS is revised several times a year and moved from Revision 15 to 16 during
+-- this exercise, so the release is data rather than a constant. Recording it here is
+-- what lets a parsed row be attributed to a revision.
+--
+-- 'unchanged' is not the same as 'fetched': it means the bytes were downloaded and
+-- found identical to what was already on disk. Without that distinction a second run
+-- looks like a no-op rather than a verification.
+--
+-- This duplicates data/raw/<release>/manifest.json on purpose. Applying this file is a
+-- schema reset, so it wipes these rows; the manifest lives with the payloads and
+-- survives. The manifest is authoritative when the two disagree.
+CREATE TABLE source_fetch (
+  id            bigserial PRIMARY KEY,
+  run_id        text,
+  source_key    text NOT NULL,
+  release_name  text NOT NULL,
+  release_title text,
+  url           text NOT NULL,
+  path          text,
+  status        text NOT NULL
+    CHECK (status IN ('fetched','unchanged','skipped','failed')),
+  http_status   int,
+  bytes         bigint,
+  sha256        text,
+  duration_ms   int,
+  error         text,
+  fetched_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX source_fetch_lookup_idx
+  ON source_fetch (release_name, source_key, fetched_at DESC);
 
 -- Chapters 1-97: what Chapter 99 points back at.
 CREATE TABLE hts_base (

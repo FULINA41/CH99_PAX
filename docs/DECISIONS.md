@@ -208,6 +208,102 @@ idempotency from D-0004 rather than on the orchestrator.
 
 ---
 
+## D-0008 — Size the fetch task budget from the retry policy, not from one attempt
+**Date:** 2026-08-22 · **Area:** scraper · **Status:** accepted · **Amends D-0007**
+
+**Context.** `FETCH_TIMEOUT` was `TOTAL_TIMEOUT + 60` = 360s, which budgets for a single
+HTTP attempt. `fetching.py` makes up to `MAX_ATTEMPTS` = 3 attempts of `TOTAL_TIMEOUT` =
+300s each plus 1s + 2s of backoff, so one fetch can legitimately run 903s. Against a
+hung server the engine would cancel the task at 360s, mid-second-attempt. Cancellation is
+not merely slow: a task whose parent is CANCELLED never runs, so `summarize` would never
+write the manifest — the precise failure D-0007 was written to prevent. The two numbers
+lived in different files with nothing tying them together.
+
+**Options.**
+- Raise `FETCH_TIMEOUT` to a hand-picked larger constant — fixes today, drifts again the
+  next time `MAX_ATTEMPTS` or `TOTAL_TIMEOUT` moves.
+- Lower `TOTAL_TIMEOUT` to ~100s so three attempts fit inside 360s — keeps the slot short,
+  but overturns a deliberate ceiling (§6: "the 14 MB PDF takes seconds normally; 5 minutes
+  is a generous ceiling") and would abort a genuinely slow 14 MB download.
+- Derive the budget: `fetching.py` exports `WORST_CASE_SECONDS = MAX_ATTEMPTS *
+  TOTAL_TIMEOUT + BACKOFF_SECONDS`, and `scrape.py` sets `FETCH_TIMEOUT` from it.
+- Call `ctx.refresh_timeout()` before each retry so only a retrying task earns more time.
+
+**Decision.** The third. The module that owns the retry policy also publishes what that
+policy can cost; the orchestrator adds a 60s margin on top. `FETCH_TIMEOUT` is now 963s.
+
+**Tradeoff.** A genuinely wedged fetch holds a worker slot for ~16 minutes before the run
+fails. Acceptable here — three sources, no concurrency pressure, and D-0007 ranks manifest
+completeness above promptness. `ctx.refresh_timeout()` is the better answer if slot
+occupancy ever matters; it was not taken now because it puts engine coupling into
+`fetching.py`, which is currently Hatchet-free and unit-testable without an engine.
+
+**Feeds.** SUBMISSION.md §3, §4
+
+---
+
+## D-0009 — The mid-run release re-check is best-effort and cannot fail the run
+**Date:** 2026-08-22 · **Area:** scraper · **Status:** accepted
+
+**Context.** `summarize` re-resolves the release after the fetches, because the two
+`exportList` endpoints take no release parameter and a revision published mid-run cannot
+be prevented, only detected. That call was `current_release()`, which raises by design.
+It sat *before* `write_manifest`, so a USITC blip at that moment would abort `summarize`
+with all three payloads already on disk and no manifest describing them — 26 MB that
+Part 2 cannot judge as trustworthy, caused by a check whose only job is to add a field.
+
+**Options.**
+- Move the re-check after `write_manifest` — the manifest then never carries the finding.
+- A non-raising variant of `current_release` — a second contract for one caller.
+- Wrap the call: on failure record `release_recheck_failed` in the manifest and continue.
+
+**Decision.** The third. `release.py` keeps its raise-always contract, which is correct in
+`resolve_release` — with no release there is no directory to write into. By `summarize`
+the bytes have landed and the context has changed, so the caller, not the callee, decides
+that this failure is survivable.
+
+**Tradeoff.** A run can now finish green while silently not knowing whether the release
+moved. The manifest says so explicitly rather than omitting the field, so a reader can
+tell "checked, unchanged" from "could not check". Wrong if the re-check ever becomes a
+correctness gate rather than an annotation.
+
+**Feeds.** SUBMISSION.md §3, §5
+
+---
+
+## D-0010 — A payload says whether the directory's release actually speaks for it
+**Date:** 2026-08-22 · **Area:** scraper · **Status:** superseded by D-0011
+
+**Context.** Found by acceptance check 5. Payloads are stored under `data/raw/<release>/`,
+but only the notes PDF endpoint accepts a release parameter; `exportList` ignores it and
+serves whatever is current. So `data/raw/2026HTSRev15/` holds a genuine Rev15 PDF beside
+`ch99.json` and `base.json` that were Rev16 at fetch time. The directory name asserts a
+revision for all three files and is true of one. `Source.pinnable` already knows which is
+which and each entry's `url` shows it, but nothing said so, and Part 2 would reasonably
+read that directory as a complete snapshot of one revision.
+
+**Options.**
+- Per-entry `release_pinned` in the manifest — the information exists, so declare it.
+- Refuse `--release` when it does not match the current release — safe, but removes the
+  ability to re-fetch a historical PDF, which is why the flag exists.
+- Name mixed directories for what they hold, e.g. `2026HTSRev15+exports@Rev16` — the name
+  stops lying, at the cost of unstable paths every downstream reader must parse.
+- Skip non-pinnable sources when a non-current release is pinned, recording `skipped` —
+  neither lies nor overwrites, but adds a fourth status and a partial-directory case.
+
+**Decision.** The first. `fetch_source` records
+`release_pinned = source.pinnable and release is not None`, and it rides into the manifest
+and the fetch result. A reader can now tell which bytes the directory name speaks for.
+
+**Tradeoff.** This buys knowledge, not protection. The related hazard is untouched: a
+re-run pinned to an older release re-downloads the exports, finds the hash different from
+the correct historical copy, and replaces it — quietly turning a good snapshot into a
+mixed one while reporting a normal `fetched`. Reaching that requires passing `--release`
+with a stale value after a revision has landed; the documented command never does. The
+fourth option above is the fix if it ever matters, and would supersede this entry.
+
+**Feeds.** SUBMISSION.md §2, §5
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

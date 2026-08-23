@@ -212,3 +212,171 @@ hashes, finds the bytes identical, and rewrites nothing.
 
 **Cleanup.** `probe.py` and `probe_run.py` deleted, `worker.py` restored to registering
 `echo_workflow` only.
+
+---
+
+## 2026-08-22 — Step 1: making `cleanup.sh` tell the truth
+
+**Goal.** Fix the project-name mismatch found during stack verification, because Step 7's
+first acceptance check runs `./cleanup.sh` and trusts its report.
+
+**Done.** Branch `task1` created; Part 1 work happens there, one commit per step. Wrote a
+root `.env` containing `COMPOSE_PROJECT_NAME=chp99-takehome`, with a comment explaining
+what it fixes. Nothing tracked changed — `.env` is gitignored, and the provided
+infrastructure was not edited.
+
+**The rename costs the volumes.** Compose scopes volumes by project name, so the old
+`chp99-takehome2_*` volumes were orphaned by the change rather than carried over. They
+were removed deliberately and the stack rebuilt from empty: Hatchet re-ran its migrations
+against a fresh database and the committed worker token still authenticated, which is what
+the dev image's fixed token is for. `data/` was untouched throughout — it is a host bind
+mount, not a volume.
+
+**Verified.**
+
+| Check | Before | After |
+| --- | --- | --- |
+| `docker compose config` project name | `chp99-takehome2` | `chp99-takehome` |
+| `cleanup.sh`'s `PROJECT=` | `chp99-takehome` | unchanged — now matches |
+| Containers matching the project label | 0 | 4 |
+| Volumes matching the project label | 0 | 4 |
+| Networks matching the project label | 0 | 1 |
+| `git check-ignore -v .env` | — | matched `.gitignore:15` |
+
+Stack re-verified after the rebuild: three services healthy, `./setup.sh` recreated the
+three tables, worker registered, and `echo_run "step1 ok"` returned
+`message='step1 ok' length=8`.
+
+The label counts are the point: every fallback in `cleanup.sh` filters on that label, so
+at 0 they were silently no-ops and the script's closing "clean" was unconditional.
+
+---
+
+## 2026-08-22 — Reviewing the DAG: two ways the manifest could have been lost
+
+**Goal.** Read `scrape.py` back against D-0006/D-0007 before calling Part 1 done. Both
+decisions rest on one guarantee — `summarize` always runs and always writes a manifest —
+so the review looked specifically for paths that break it.
+
+**Found two, both real.**
+
+1. **`FETCH_TIMEOUT` budgeted one attempt, not the retry sequence.** `TOTAL_TIMEOUT + 60`
+   = 360s, while `fetching.py` can spend `3 × 300s + 3s` = 903s. Against a hung server the
+   engine cancels the fetch task at 360s; a task whose parent is CANCELLED never runs, so
+   `summarize` never writes the manifest. The two constants lived in different files with
+   nothing tying them together.
+2. **The mid-run release re-check could abort `summarize` before `write_manifest`.**
+   `current_release()` raises by design. Placed at the top of `summarize`, a USITC blip
+   would kill the task with all three payloads already on disk and no manifest.
+
+Both are the same class of bug: something incidental was given the power to destroy the
+artefact the whole failure design exists to produce.
+
+**Fixed.**
+- `fetching.py` now exports `WORST_CASE_SECONDS = MAX_ATTEMPTS * TOTAL_TIMEOUT +
+  BACKOFF_SECONDS`; `scrape.py` derives `FETCH_TIMEOUT` from it (D-0008). Verified:
+  `WORST_CASE 903.0s / FETCH_TIMEOUT 963.0s / covers worst case: True`.
+- The re-check is wrapped; on failure the manifest carries `release_recheck_failed`
+  and the run continues (D-0009).
+
+**Verified, with output.**
+- Added `tests/test_scrape.py`, three cases driven through the SDK's own
+  `Task.mock_run(parent_outputs=...)` — no engine, no network, no database.
+- Checked the new test actually catches the old behaviour by reverting the fix in place:
+  `1 failed, 2 passed`, failing with `RuntimeError: could not resolve the current release:
+  HTTP 503` propagating out of `summarize`. Restored, then `18 passed in 0.82s`.
+
+**Agent notes.** The agent wrote `scrape.py` and both bugs came through its code; neither
+was caught by the tests it wrote at the time, because those tests covered the modules
+below the DAG and nothing exercised `summarize`. The review that found them was a
+line-by-line read against the decision log, not a test run — the decisions were specific
+enough ("summarize must always write the manifest") to check code against, which is the
+main argument for having written them down. `Task.mock_run` was found by introspecting the
+installed SDK rather than recalled, after `ctx`-faking was considered and rejected.
+
+**Not done.** `FETCHED_SOURCES` in `scrape.py` is unused. Nothing has run against the live
+API since the fixes — the verification plan in §9 of the design spec is still unrun, and
+`data/raw/2026HTSRev16/manifest.json` is still the hand-written prototype.
+
+---
+
+## 2026-08-22 — Step 7: the five end-to-end checks
+
+**Goal.** Run the verification plan from §9 of the design spec against the live API, with
+the post-review code, and record the output rather than a verdict.
+
+**Setup.** `data/raw` moved aside to simulate a fresh clone, then `./cleanup.sh` — which,
+now that Step 1 pinned the project name, actually named and removed the four
+`chp99-takehome_*` volumes instead of silently matching nothing. Stack rebuilt from empty,
+schema applied, worker started.
+
+**1 · Clean run.** 26 MB in 9.4s, three sources `fetched`, byte counts and sha256 prefixes
+identical to the values hand-fetched on 2026-08-20: `ch99` 1,992,914 / `5a7ca6b0`,
+`base` 10,349,905 / `221e1560`, `notes_pdf` 13,969,270 / `58b2a00d`.
+
+**2 · Idempotency.** Second run reported three `unchanged`. The payload mtimes were
+byte-for-byte the same before and after — 21:49:42 / :44 / :47 — and only `manifest.json`
+advanced, to 21:50:13. `source_fetch` holds six rows under two run ids: three `fetched`,
+then three `unchanged`. The mtimes are the real evidence; the status string is only a
+claim about them.
+
+**3 · Partial failure.** Injected without touching code: `--release BOGUSREL` gives the
+PDF endpoint a release that does not exist, while the two exports ignore the parameter and
+succeed. Result: `ch99` and `base` `fetched`, `notes_pdf` `failed` after `attempts=3`,
+manifest written with `complete: false`, all three rows in `source_fetch` including the
+error text, exit code 1, and the `2026HTSRev16` directory untouched. The report printed
+normally on the failed run, which is the payoff for reading it from `source_fetch` rather
+than from task outputs.
+
+Two notes. The server answers a nonexistent release with **503**, not 404, so the retry
+policy spends all three attempts on a request that could never succeed — the classification
+is right in general and wrong here, and nothing in the response distinguishes the cases.
+And the client-side failure message is the SDK's generic `Workflow run <id> failed.`; the
+useful text (`1 source(s) failed: notes_pdf`) stays in the run detail. The table below it
+carries the same information, so this was left alone.
+
+**4 · Interrupted write.** Triggered `--force` and sent SIGKILL to the worker 1.5s in.
+Left behind three 0-byte `.part` files, and all three payloads hashed **identically** to
+before the kill. A hard kill cannot reach the final path. On restart the re-run logged
+`cleared 3 stale .part file(s) left by an earlier run` and completed with three
+`unchanged` — which is why `clear_stale_parts` returns what it removed instead of sweeping
+silently.
+
+**5 · Release scoping.** `--release 2026HTSRev15` created a new directory rather than
+overwriting: `2026HTSRev15/ch99-notes.pdf` is 13,957,698 B / `92822e8f`, genuinely
+different from Rev16's 13,969,270 B / `58b2a00d`.
+
+**Defect found by check 5 — a directory name that overstates what it holds.** The two
+bulk exports take no release parameter, so `data/raw/2026HTSRev15/` contains a Rev15 PDF
+next to `ch99.json` and `base.json` that are whatever the API served at fetch time, which
+was Rev16. The directory asserts a revision for all three files, and it is only true of
+one. `Source.pinnable` already encodes which is which, and each entry's `url` shows it to
+a careful reader, but nothing states it. Not fixed yet; raised for a decision.
+
+**Agent notes.** Two of the checks were made cheaper by probing the API first rather than
+editing code to inject faults: a nonexistent release yields 503 and an old release still
+serves its PDF, which turned checks 3 and 5 into flag changes. The first attempt to read
+the exit code measured `$?` after a pipe and read `tail`'s status instead — corrected by
+capturing the command's output into a variable.
+
+**Defect fixed (D-0010).** `release_pinned` now rides on every fetch result and into the
+manifest. Verified against the live API by re-running the command that exposed it:
+`data/raw/2026HTSRev15/manifest.json` reports `notes_pdf` as `release_pinned: true` and
+both exports as `false`. 19 unit tests pass.
+
+The overwrite hazard behind the same defect is deliberately left open and written up in
+D-0010: it needs `--release` naming a stale revision after a new one has landed, which
+the documented command never does.
+
+**Reworked to prevent the defect, not just declare it (D-0011).** `release_pinned` alone
+left the overwrite hazard open, so the fix became: skip a source whose endpoint cannot
+serve the pinned release, before any request is made.
+
+Verified against the live API with an unambiguous setup — two 40-byte marker files stood
+in for a historical Rev15 snapshot, so an overwrite would have been visible as 2 MB and
+10 MB files. After `--release 2026HTSRev15`: both markers still 40 bytes and byte-identical,
+the PDF genuinely fetched at 13,957,698 B, `source_fetch` recording `skipped` with the
+existing files' size, and the manifest reporting `complete: true` — the directory holds
+all three payloads even though two were not re-fetched. A bare run against Rev16 was
+unaffected. 23 unit tests pass, including one that queues no HTTP answers at all, so any
+request during a skip would raise.
