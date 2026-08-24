@@ -43,6 +43,12 @@ def _report(summary: dict) -> None:
     print(f"          {ch['note_citations']:>7,} note citations (unresolved until step 4)")
     print(f"          {ch['issues']:>7,} parse_issue rows")
 
+    nt = summary["notes"]
+    print(f"\nnote      {nt['notes']:>7,} records across {nt['subchapters']} subchapters   " +
+          "  ".join(f"{n:,} {name}" for name, n in sorted(nt["kinds"].items())))
+    print(f"          {nt['subheadings']:>7,} codes listed by a note")
+    print(f"          {nt['issues']:>7,} parse_issue rows")
+
 
 if __name__ == "__main__":
     main()

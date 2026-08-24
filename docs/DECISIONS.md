@@ -1208,6 +1208,82 @@ derived rather than written, which would close the gap entirely.
 
 **Feeds.** SUBMISSION.md §2
 
+---
+
+## D-0034 — Segment the notes PDF by the orders it prints in, not by its layout
+**Date:** 2026-08-24 · **Area:** parser · **Status:** accepted · settles part of P-e
+
+**Context.** pypdf returns 807 pages of text with every trace of layout gone: no columns,
+no indentation, no font. The notes are structured — subchapter, numbered note, lettered
+subdivision — and none of that structure survives as markup. What does survive is that the
+schedule prints things **in order**, and three attempts to segment without using that
+ordering each failed on real data:
+
+- `^(\d{1,3})\.` opened note 44 on the line `44.5 percent ad valorem`. Once 44 was open,
+  note 52 — cited 98 times — could never start, because 52 came later in the page order but
+  is not greater than 74, which a similar false match had already taken.
+- `\bexcept\b`-style greedy subdivision matching accepted `(vvv)`, a label *quoted inside*
+  note 20's prose, immediately after `(a)`. That hid the real `(b)` and the 874 codes under
+  it — the Section 301 List 1 scope.
+- `(?<!\d)\d{4}\.\d{2}` read exactly one code out of `0201.10.500201.10.10`, because the
+  second code is preceded by a digit. The lookbehind broke precisely the case it was added
+  for.
+
+**Decision.** Three ordering rules, each derived from how the document is printed:
+
+| Rule | Why that shape |
+| --- | --- |
+| A note opens only if its number is greater than the last accepted one, and only if the period is followed by whitespace or end of line | Notes ascend and skip repealed numbers, so "greater" not "next"; the lookahead is what rejects `44.5 percent` |
+| A subdivision opens only if its label is between one and two places after the last, in the sequence a…z, aa…zz, aaa…zzz | Labels are dense, so a jump of seventy is a quotation. Two places of slack absorbs a label lost to a page break. It also rejects roman sub-items — `(i)` after `(b)` is a sub-item, `(i)` after `(h)` is the ninth letter |
+| Codes are read by a scan that accepts a match starting at a non-digit **or exactly where the previous match ended** | Admits the flattened four-column runs without mining `2345.67` out of the middle of a longer number |
+
+Classification needs both density and count: `subheading_list` above 50% code characters,
+`mixed` above 25%, and fewer than 20 codes is prose regardless — a sentence citing two
+headings is dense but is not a list.
+
+**Tradeoff.** Every rule is a heuristic tuned against one revision, and each fails silently
+in one direction: a note printed out of order is dropped, a subdivision after a gap of three
+is dropped, a genuinely new layout produces fewer notes rather than an error. The only
+guard is the count — `parse_notes` raises if it finds no notes at all — and the citation
+resolution rate, which is the real acceptance test: **737 of the 800 citations that should
+be in this PDF resolve (92%)**, with 126 more correctly identified as chapter notes that
+live in a different document. The 63 that do not resolve become `parse_issue` rows when
+Step 5 sets `rule_note.note_id`.
+
+345 note records across 9 subchapters, 36,764 listed codes. Note 20(b) — the provision that
+defines what Section 301 covers — lands as `subheading_list`, PDF pages 261–265, 874 codes.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0035 — The notes reload deletes instead of truncating
+**Date:** 2026-08-24 · **Area:** parser · **Status:** accepted · exception to D-0025
+
+**Context.** D-0025 chose `TRUNCATE` over `DELETE` after measuring 10.4s against 0.00s on
+`hts_base`. Applying the same statement to `note` fails outright:
+
+```
+psycopg.errors.FeatureNotSupported: cannot truncate a table referenced in a foreign key
+DETAIL: Table "rule_note" references "note".
+```
+
+Truncating `rule_note` alongside would be worse than slow: its rows are facts extracted
+from the Chapter 99 side by a task that ran earlier in the same workflow, and they would be
+gone until the next run of that task.
+
+**Decision.** `UPDATE rule_note SET note_id = NULL`, then `DELETE FROM note`.
+`note_subheading` cascades; `rule_base_match.note_id` is set null and Step 5 rebuilds it.
+The delete costs nothing because there are 345 rows and, after the update, no references
+left to chase — the situation D-0025 was avoiding does not arise at this scale.
+
+**Tradeoff.** Two reload idioms now exist in the parser, and which one is right depends on
+whether another table points at the one being replaced. The comment on each says which and
+why, because the wrong choice is a runtime error in one direction and a slow reload in the
+other.
+
+**Feeds.** SUBMISSION.md §2
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

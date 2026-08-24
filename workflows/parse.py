@@ -9,6 +9,7 @@ from parsing.base import load_base, parse_base
 from parsing.ch99 import load_ch99, parse_ch99
 from parsing.db import resolve_source_fetch_ids
 from parsing.manifest import load_manifest
+from parsing.notes import load_notes, parse_notes
 
 # Loading 26,246 rows takes longer than the engine's 60s default, and a task cancelled
 # mid-insert would roll back rather than corrupt -- but it would also report nothing.
@@ -67,7 +68,21 @@ def parse_chapter99(input: ParseInput, ctx: Context) -> dict[str, Any]:
     return written
 
 
-@parse_workflow.task(parents=[load_payloads, parse_base_schedule, parse_chapter99])
+@parse_workflow.task(parents=[load_payloads, parse_chapter99], execution_timeout=PARSE_TIMEOUT)
+def parse_us_notes(input: ParseInput, ctx: Context) -> dict[str, Any]:
+    # After parse_chapter99 rather than beside it: loading the notes clears
+    # rule_note.note_id, and that column belongs to rows parse_chapter99 writes.
+    source = ctx.task_output(load_payloads)["sources"]["notes_pdf"]
+
+    data = parse_notes(source["path"], source_fetch_id=source["source_fetch_id"])
+    written = load_notes(data, run_id=ctx.workflow_run_id)
+
+    ctx.log(f"note: {written['notes']:,} records across {written['subchapters']} "
+            f"subchapters, {written['subheadings']:,} listed codes")
+    return written
+
+
+@parse_workflow.task(parents=[load_payloads, parse_base_schedule, parse_chapter99, parse_us_notes])
 def summarize(input: ParseInput, ctx: Context) -> dict[str, Any]:
     loaded = ctx.task_output(load_payloads)
 
@@ -79,4 +94,5 @@ def summarize(input: ParseInput, ctx: Context) -> dict[str, Any]:
         },
         "hts_base": ctx.task_output(parse_base_schedule),
         "chapter99": ctx.task_output(parse_chapter99),
+        "notes": ctx.task_output(parse_us_notes),
     }

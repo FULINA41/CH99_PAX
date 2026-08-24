@@ -945,3 +945,64 @@ state on disk.
 The country work went the other way. The user's instruction was to split on `or` only; the
 data said that would break `China and Hong Kong`, and checking before implementing turned a
 correct-sounding rule into a correct one.
+
+---
+
+## 2026-08-24 — Part 2, Step 4: the notes PDF
+
+`parsing/notes.py`, wired in as `parse_us_notes` after `parse_chapter99`. 84 unit tests
+(73 before).
+
+```
+note          345 records across 9 subchapters   10 mixed  301 prose  34 subheading_list
+           36,764 codes listed by a note
+```
+
+**The riskiest step, and the survey was worth the time.** Extracted the text first and read
+it before writing any pattern. That is how the page furniture turned out to be written two
+ways — `99-III-1` on a subchapter's first page and `99 - III - 377` with spaces on the rest
+— and how the note-page runs were found: 468 pages in 9 blocks, subchapter III's notes alone
+spanning pages 172-596.
+
+**Three segmentation attempts, three failures on real data.** Each was caught by measuring,
+not by reading the code:
+
+1. `^(\d{1,3})\.` opened "note 44" on `44.5 percent ad valorem`. Because a similar false
+   match had already taken 74, note **52** — cited 98 times — could never open. Fixed with a
+   lookahead for whitespace or end of line.
+2. After that, the plain monotonic rule accepted `(vvv)` — a label quoted inside note 20's
+   own prose — right after `(a)`, which then blocked the real `(b)` and the **874 codes**
+   under it. That is the Section 301 List 1 scope, the single most important list in the
+   document. Fixed by allowing a label at most two places ahead.
+3. `(?<!\d)\d{4}\.\d{2}` read one code out of `0201.10.500201.10.10`. The lookbehind broke
+   exactly the case it was written for, since the second code is preceded by a digit. A unit
+   test caught this one before any run.
+
+**A constraint caught a fourth.** `UNIQUE NULLS NOT DISTINCT` on `note` rejected the load
+with `Key (us_note, I, 3, i) already exists` — the same subdivision letter twice in one
+note, because `(i)` is both the ninth letter and the first roman numeral. That constraint was
+added in Step 0 for a different reason and paid for itself here.
+
+**Verification.** The real acceptance test is not a row count but whether the citations
+extracted from Chapter 99 can find their notes:
+
+```
+ resolves                          | 737
+ chapter note - different document | 126
+ NOT FOUND                         |  63
+```
+
+737 of 800 in-PDF citations resolve (92%); the 126 are `additional U.S. note N to chapter N`,
+which belong to another chapter's document and are correctly not here. Note 20(b) lands as
+`subheading_list`, pages 261-265, 874 codes. Checked that `7208` is **not** among them, which
+is right — steel is Section 232 under note 16, not Section 301 List 1. Two consecutive runs
+give `345/36764/4a6f1b1f…` for count, code count and a digest of every label, kind and body
+length.
+
+**Agent notes.** The pattern across all four failures is the same: a rule that looks correct
+in isolation and is wrong against the document. Every one was found by running the extractor
+over the real 807 pages and asking a question with a checkable answer — does note 52 exist,
+does 20(b) have codes, do the citations resolve — rather than by inspecting output that
+looked reasonable. The two failures that would have been most damaging (note 52 missing, 20(b)
+empty) produced no error and no empty result: they produced a smaller, entirely plausible
+set of notes.
