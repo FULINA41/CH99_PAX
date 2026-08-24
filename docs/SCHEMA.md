@@ -131,8 +131,8 @@ split is what makes a duty computable rather than merely displayable (D-0013).
 | --- | --- | ---: | ---: | --- |
 | `Free` | `free` | 0 | | |
 | `2.5%` | `replace` | 2.5 | | |
-| `14.27¢/liter` | `replace` | | 14.27 | `liter` |
-| `4.4¢/kg + 8.5%` | `replace` | 8.5 | 4.4 | `kg` |
+| `14.27¢/liter` | `replace` | | 0.1427 | `liter` |
+| `4.4¢/kg + 8.5%` | `replace` | 8.5 | 0.044 | `kg` |
 | `The rate applicable to each garment in the set` | `prose` | | | |
 
 | Column | Meaning | When it is used |
@@ -140,7 +140,7 @@ split is what makes a duty computable rather than merely displayable (D-0013).
 | `rate_text` | The string as printed. Always populated | **Always what the UI displays** — never our parsed number. A user checking the answer is checking it against the government's words |
 | `rate_kind` | `free` \| `replace` \| `additive` \| `no_change` \| `prose` \| `none` | The calculator's switch. Base rows only ever use the first two and `prose`; the vocabulary is shared with `rule` so **one calculator serves both tables** |
 | `rate_ad_valorem_pct` | Percent of declared value | `value × pct / 100` |
-| `rate_specific_amount` | Dollars per unit | `quantity × amount` |
+| `rate_specific_amount` | Dollars per unit — **cents are divided by 100**, so `46.3¢/kg` is stored as 0.463 and compares directly with `$1.104/kg` | `quantity × amount` |
 | `rate_specific_unit` | The unit charged per | Reconciled against `units`; when they disagree, the answer says "declare the weight in kg" |
 | `rate_inherited_from` | The ancestor the rate was copied from; NULL when the row states its own | **A user asks "where does 6.5% come from"; the UI answers "inherited from 2922.49.49".** 20,446 of 31,860 export rows inherit (D-0014) |
 
@@ -149,8 +149,8 @@ word — a calculation may ignore the distinction, a display should not.
 
 ### Column 2 — countries without normal trade relations
 
-The same five columns, prefixed `col2_`. Not a duplicate of Column 1: on the same line the
-two differ by roughly eightfold.
+The same five columns, prefixed `col2_`, **plus its own `col2_inherited_from`**. Not a
+duplicate of Column 1: on the same line the two differ by roughly eightfold.
 
 | `hts` | `rate_text` | `col2_rate_text` |
 | --- | --- | --- |
@@ -160,6 +160,7 @@ two differ by roughly eightfold.
 | Column | When it is used |
 | --- | --- |
 | `col2_*` (five columns) | **Only when the country of origin is Cuba, North Korea, Russia or Belarus.** Reading the wrong column turns $6,500 into $50,000 on a $100,000 shipment |
+| `col2_inherited_from` | Saying where a Column 2 rate came from, the same way `rate_inherited_from` does for Column 1. The two chains are separate because they disagree: `9006.59.15.20` states its own Column 2 (`20%`) while inheriting Column 1 from `9006.59.15`. Exactly **one row in 26,246**, which is precisely why sharing a single column would have been wrong and invisible |
 
 That country list is **in none of the three sources** — it lives in the HTS General Notes.
 It has to be hardcoded with a citation, or the answer has to say a human is needed.

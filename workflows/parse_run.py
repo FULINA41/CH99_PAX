@@ -26,6 +26,13 @@ def _report(summary: dict) -> None:
     for key, fetch_id in sorted(summary["sources"].items()):
         print(f"  {key:<12} source_fetch #{fetch_id}")
 
+    base = summary["hts_base"]
+    print(f"\nhts_base  {base['rows']:>7,} rows")
+    print(f"          {base['inherited']:>7,} Column 1 rates inherited from an ancestor")
+    print(f"          {base['col2_inherited']:>7,} Column 2 rates inherited from an ancestor")
+    print(f"          {base['prose_rates']:>7,} rates that cannot be computed")
+    print(f"          {base['issues']:>7,} parse_issue rows")
+
 
 if __name__ == "__main__":
     main()

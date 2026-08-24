@@ -583,3 +583,167 @@ scraper's atomic write — and wrong about the threat, which was a human with `c
 weakened version still caught it, so the outcome was good, but the reasoning that produced
 it ("the design already guarantees this") would have justified removing the check
 entirely.
+
+### A review question that exposed a missing decision
+
+Asked in review why `parsing/db.py` is not redundant, given that the documented recovery
+after a schema reset is `setup.sh` → scrape → parse, which re-creates the rows. The premise
+was right and the conclusion was not: re-running the scraper needs the network, which is the
+one thing Part 2 is defined as not needing, and for a superseded release it cannot work at
+all — both `exportList` sources are `pinnable=False`. Checked rather than assumed that
+`./cleanup.sh` leaves `data/` intact: `./data` is a bind mount, and the script filters on the
+Compose project label, so it never sees it.
+
+The reconstruction had no entry in `DECISIONS.md` at all. Written up as D-0023 with the
+challenge itself as the first rejected option, since it is the objection a reviewer reaches
+first. Second time in two sessions that a dangling or absent decision was found by someone
+asking about the code rather than by reading the log.
+
+---
+
+## 2026-08-23 — Part 2, Step 2: the base schedule
+
+`parsing/rates.py`, `parsing/tree.py`, `parsing/issues.py` and `parsing/base.py`, wired
+into the DAG as `parse_base_schedule`. 54 unit tests pass (30 before).
+
+**Counted before writing, this time.** The last step's lesson held: every shape the parser
+handles was enumerated from the data first. 22,829 non-empty rate strings across `general`
+and `other`, 1,419 distinct, and the four obvious patterns cover all but 420 of them. The
+420 turned out to be six different things — a fractional percentage (`33 1/3%`, 84 rows), a
+qualified basis (`7.4¢/kg on drained weight`), a sliding scale, a pointer to another
+heading's rate, `See additional U.S. note N`, and three-operand compounds. Only the first
+two are parseable, and knowing that before writing the regex is why `rate_specific_unit`
+carries the qualification instead of dropping it (D-0024).
+
+**The tree needed no special cases.** 26,246 coded rows, and the "nearest preceding row of
+smaller indent" rule produced **zero** parent-prefix violations across all of them —
+including the 12 places where indent jumps by more than one. The code hierarchy and the
+indent hierarchy agree everywhere in this revision, which is a stronger result than
+expected and is now asserted per row rather than assumed.
+
+**Every leaf has a rate.** 3,053 rows end up `rate_kind='none'` — no rate of their own and
+no ancestor with one. All 3,053 are 4- or 6-digit codes and **all 3,053 have children**;
+zero leaves are left without a duty. That is what makes `none` a structural marker rather
+than a gap.
+
+### Verification
+
+```
+hts_base   26,246 rows
+           11,779 rates inherited from an ancestor
+              305 rates that cannot be computed
+              305 parse_issue rows
+```
+
+Acceptance queries:
+
+```
+2922.49.49.10 | Alanine | 4.2% | replace | 4.2 | inherited from 2922.49.49
+0402.99.90.00 | 46.3¢/kg + 14.9%  ->  pct 14.9, amount 0.463, unit kg
+2922.49.30.00 | general 6.5%      vs  column 2 '15.4¢/kg + 50%'
+```
+
+Prose accounting reconciles: 421 rows carry `rate_kind='prose'`, of which 150 printed one
+themselves and 271 inherited it from an ancestor; the 305 issues are 150 `general` plus 155
+`other`. Ran from an empty database (`./setup.sh`, `hts_base` at 0 rows) straight through
+to 26,246. Ran twice more and compared `md5(string_agg(t::text, '|' ORDER BY hts))` over
+the whole table: identical.
+
+### Two performance findings, one of which I got wrong first
+
+Switched the loader to `COPY` on the assumption that `executemany` was the bottleneck, and
+**wrote the speedup into a code comment before measuring it**. It was not the bottleneck:
+COPY changed nothing. Measured properly:
+
+| | |
+| --- | ---: |
+| `DELETE FROM hts_base` | **10.41s** |
+| `TRUNCATE hts_base, rule_base_match` | 0.00s |
+| COPY 26,246 rows | 1.58s |
+| `executemany` 26,246 rows | 2.25s |
+
+The cost was the delete, not the insert, and the reason is in the schema I wrote: two
+self-referencing foreign keys with `ON DELETE SET NULL` mean deleting the table nulls out
+~26,000 references one at a time (D-0025). COPY is kept — it is 30% better, not the order
+of magnitude the comment claimed, and the comment now says so.
+
+Total wall clock for the workflow is ~37s against ~2s of database work. The remainder is
+scheduling latency in the Hatchet Lite dev image across three tasks; not chased, since it
+is outside our code and does not affect the result. Recorded rather than explained.
+
+### Agent notes
+
+The comment written before the measurement is the notable failure — the same shape as the
+regex-escaping bug recorded twice already: producing a confident artifact and only then
+checking it. It was caught within minutes because the next thing done was a measurement,
+but nothing about the process forced that.
+
+`compose watch` syncs files without restarting, and Python caches modules, so a run against
+"the new code" was ambiguous until the worker was restarted explicitly. The gotcha is in
+CLAUDE.md; noticing it required reading `Up 3 minutes` on the container and realising it
+had not restarted.
+
+### A cap questioned, measured, and kept
+
+Asked in review why `parse_rate` refuses three or more terms when it handles two. Measured
+rather than argued: 138 strings, 94 distinct, all in the base export — chapters 26, 65, 91 —
+and none in Chapter 99. The samples settled it in the opposite direction from the question:
+`75¢ each + 45% on the case + 35% on the battery` is not a longer compound rate, it is two
+ad valorem terms with different bases, which no number of extra columns can hold. The cap at
+two is where "one percentage and one amount, both on the whole good" stops being true.
+
+Kept as is and written up as D-0026, including the hybrid `rate_term` design that would fix
+it and the condition that should trigger it. Also fixed a numbering collision found on the
+way: two entries had been written as D-0023 in the same session, one here and one in Step 2.
+Renumbered the later two and updated the three references. Third time in three sessions that
+a gap in the decision log surfaced through a question about the code rather than through
+reading the log.
+
+### Column 2's inheritance had nowhere to be recorded
+
+Asked in review what `column2_from` is for. Answering it exposed that the value was computed
+and then thrown away: `parse_base` used it to pick the effective Column 2 rate but the schema
+had only `rate_inherited_from`, so Column 1 could say "this rate was copied from an ancestor"
+and Column 2 could not. That is the asymmetry D-0014 exists to prevent — materialising a rate
+is only acceptable if the row can say where it came from.
+
+Measured whether the second `inherit()` call is redundant before adding a column for it:
+
+```
+Column 1 needs to inherit  11,779 rows
+Column 2 needs to inherit  11,778 rows
+the two chains disagree on      1 row   -- 9006.59.15.20
+```
+
+`9006.59.15.20` states its own Column 2 (20%) while inheriting Column 1 (Free) from
+`9006.59.15`. One row in 26,246, and reusing `general_from` for both columns would have given
+that row its ancestor's Column 2 instead of its own — wrong, invisible, and impossible to
+notice from the data. The second call stays, and the schema now has `col2_inherited_from`.
+
+Verified after `./setup.sh` and a re-run: 11,779 / 11,778 / 1, and the one differing row reads
+correctly. Also exercised D-0023 incidentally — the schema reset dropped `source_fetch`, and
+the parser rebuilt all three rows from the manifest without the scraper running.
+
+Worth recording as a domain fact rather than only a fix: Column 1 and Column 2 are stated on
+the same row 99.99% of the time. The "almost" is the part a future optimisation must not
+assume away.
+
+---
+
+## 2026-08-24 — Column 2 inheritance provenance
+
+Change made by the user on top of Step 2: `col2_inherited_from`, so Column 2 records the
+ancestor its materialised rate came from instead of borrowing Column 1's.
+
+Verified rather than assumed. The two chains disagree on exactly one row in 26,246:
+
+```
+      hts      | rate_text | rate_inherited_from | col2_rate_text | col2_inherited_from
+---------------+-----------+---------------------+----------------+---------------------
+ 9006.59.15.20 | Free      | 9006.59.15          | 20%            |
+```
+
+11,779 Column 1 rates and 11,778 Column 2 rates are inherited, across 3,267 distinct
+ancestors. Schema re-applied from empty, parser re-run, 54 tests pass, and two consecutive
+runs produce an identical whole-table md5. Written up as D-0025 and added to both schema
+references, which had described Column 2 as "the same five columns".

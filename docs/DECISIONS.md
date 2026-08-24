@@ -776,6 +776,248 @@ ad-hoc count, which is not.
 
 **Feeds.** SUBMISSION.md §5, §6
 
+## D-0023 — The parser rebuilds a missing `source_fetch` row from the manifest
+**Date:** 2026-08-23 · **Area:** parser, provenance · **Status:** accepted · Extends D-0005
+
+**Context.** Provenance and payloads live on media with different lifetimes. `source_fetch`
+sits in the Postgres volume; payloads sit in `./data`, which `docker-compose.yaml:142`
+mounts as a bind mount rather than a named volume. `./setup.sh` drops all eleven tables,
+and `./cleanup.sh` removes the project's volumes by label without ever naming `./data` —
+so both leave a full payload directory beside an empty `source_fetch`. Both are documented
+routine operations and `setup.sh` runs dozens of times while a parser is being written.
+Three further routes to the same state: the scraper deliberately continues when
+`record_fetch` fails (`scrape.py:84-88`), recording `provenance_error` in the manifest
+instead; payloads can be staged by hand, as one `curl` already did; and a directory for a
+superseded release can never regain its rows at all, because both `exportList` sources are
+`pinnable=False` and serve only the current revision.
+
+**Options.**
+- Re-run the scraper to restore the rows — the obvious recovery, and the reason this entry
+  was nearly not written at all. It is unavailable exactly where it is needed: it requires
+  the network, and "runnable against payloads fetched an hour ago, without touching the
+  network" is the property that defines Part 2. For a superseded release it cannot work at
+  any time.
+- Leave `source_fetch_id` NULL and have the UI say provenance is unavailable — honest, and
+  smaller; all three foreign keys are already nullable.
+- Look the row up by content hash and insert one transcribed from the manifest on a miss.
+
+**Decision.** The third. `resolve_source_fetch_ids` matches on
+`(release_name, source_key, sha256)` — content, not file position — and inserts from the
+manifest when nothing matches. `run_id` is left NULL: it is the one field the manifest
+cannot supply, which makes it the marker separating a reconstructed row from a fetched one
+(`WHERE run_id IS NULL`). Nothing is invented; every other column is transcribed from the
+record D-0005 already names authoritative.
+
+**Tradeoff.** A row now asserts a fetch that this run did not perform, and a reader who
+ignores `run_id` cannot tell. Re-parsing stays safe — the second lookup matches the sha256
+the first run inserted, so no duplicate appears — but that idempotency rests entirely on
+D-0004's content addressing, so changing how the hash is recorded would start duplicating
+rows silently. Wrong if a reconstructed row is ever read as evidence that a fetch happened,
+rather than as evidence of what the bytes are.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+---
+
+## D-0024 — Normalise specific duties to dollars, and keep the qualified basis in the unit
+**Date:** 2026-08-23 · **Area:** parser · **Status:** accepted
+
+**Context.** The base export prints specific duties in two currencies — `$1.104/kg` and
+`46.3¢/kg` — and 22,829 rate strings across `general` and `other` include 1,794 pure
+specific and 1,700 compound duties. Storing the printed number as-is means 46.3 and 1.104
+sit in the same column meaning amounts that differ by 25×, and no consumer can tell which
+is which without re-reading `rate_text`. That is the failure "rates must be computable"
+exists to prevent.
+
+A second problem sits beside it. About 200 rows qualify the basis rather than the number:
+`7.4¢/kg on drained weight`, `77.2¢/clean kg`, `$1.32/t, including weight of container`. The
+amount is perfectly parseable; the basis is not the shipment's gross weight, and a
+calculator handed `amount=0.074, unit='kg'` would overcharge silently.
+
+**Options.**
+- Store the printed number and a currency column — faithful, and pushes a unit conversion
+  into every consumer.
+- Store dollars, and drop the qualification from the unit — computable and wrong for ~200
+  rows, in the direction of overcharging.
+- Store dollars, and keep the qualification inside `rate_specific_unit`.
+
+**Decision.** The third. `rate_specific_amount` is always dollars, cents divided by 100.
+`rate_specific_unit` holds the basis exactly as printed, qualification included, so the
+unit string never claims more than the schedule said: a consumer matching it against
+`hts_base.units` finds `kg` ≠ `kg on drained weight` and asks, rather than guessing.
+
+Two things stay `prose` deliberately. A rate with three or more operands —
+`8.8¢/kg on copper content + 3.3¢/kg on lead content + 3.7¢/kg on zinc content`, 94 distinct
+strings — would have to be truncated to the two operand slots the schema has, so it is not
+parsed at all rather than parsed to an understatement. And an ad valorem rate on a
+qualified value (`2.5% on the value of the lead content`, ~6 rows) has no unit column to
+carry the qualification, so it stays words.
+
+Three source typos are tolerated on inspection, because they are the same rule spelled
+badly: `plus 25%` for `+ 25%`, `inthe`, and `subheading+ 25%`. Each is one row.
+
+**Tradeoff.** 305 of 22,829 rate strings (1.3%) end up `prose` and are not computable; each
+gets a `parse_issue` row. `rate_text` is the only place the printed currency survives, so a
+UI that shows the parsed amount instead of the text will show `0.463` where the schedule
+says `46.3¢` — the reason `rate_text` is documented as the thing to display.
+
+An inherited prose rate propagates: 421 rows carry `rate_kind='prose'` while only 150
+printed one, the other 271 having inherited it from an ancestor. That is correct — the
+effective rate really is uncomputable — but it means the issue count and the prose row
+count differ by design, and 305 issues covers both `general` (150) and `other` (155).
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0025 — Reload with TRUNCATE, not DELETE
+**Date:** 2026-08-23 · **Area:** parser · **Status:** accepted
+
+**Context.** D-0020 chose delete-then-insert per task inside one transaction. Implemented
+as `DELETE FROM hts_base` it took **10.4 seconds** against 0.00s for `TRUNCATE`, on a table
+of 26,246 rows. The cause is in the schema: `parent_hts` and `rate_inherited_from` both
+reference `hts_base` with `ON DELETE SET NULL`, so deleting the table makes Postgres null
+out roughly 26,000 references one row at a time, each one touching three indexes. The COPY
+that follows takes 1.58s, so the delete was six times the cost of the actual work.
+
+**Options.**
+- Keep `DELETE` — simplest, and the cost grows with every self-reference added later.
+- `TRUNCATE ... CASCADE` — fast, but silently empties whatever else references the table.
+- `TRUNCATE hts_base, rule_base_match` — fast, and names what it empties.
+
+**Decision.** The third. Both tables are listed explicitly, so a table added later that
+references `hts_base` makes this statement fail with a message naming it, rather than being
+emptied because CASCADE was convenient. TRUNCATE is transactional in Postgres, so the
+guarantee D-0020 relies on — a crash before COMMIT leaves the previous contents intact —
+is unchanged.
+
+**Tradeoff.** The statement now has to be kept in step with the schema by hand; forgetting
+is a loud failure rather than a quiet one, which is the point. TRUNCATE also takes an
+ACCESS EXCLUSIVE lock, so a reader during the reload blocks rather than seeing the old
+rows — acceptable for a batch parser, and it would not be for a live service.
+
+**Feeds.** SUBMISSION.md §2
+
+## D-0026 — Rates with more than two terms stay unparsed, because each term has its own basis
+**Date:** 2026-08-23 · **Area:** schema, parser · **Status:** accepted
+
+**Context.** `parse_rate` splits a compound rate on `+` and refuses anything with more than
+two terms. Challenged in review as an arbitrary cap — if two operands fit, why not three?
+Counted across both exports: 138 rate strings, 94 distinct, every one of them in
+`base.json` (chapters 26, 65 and 91) and **none in Chapter 99**. 110 have three terms, 28
+have four. They are not longer versions of `4.4¢/kg + 8.5%`; each term carries its own
+basis:
+
+```
+8.8¢/kg on copper content + 3.3¢/kg on lead content + 3.7¢/kg on zinc content
+75¢ each + 45% on the case + 35% on the battery
+```
+
+Two *ad valorem* terms applying to different parts of one good. `rate_ad_valorem_pct`
+means "percent of the entered value", so `45% on the case` cannot go in it without changing
+what the column means. A third operand group would not help: the missing concept is a basis
+per term, not a slot count.
+
+**Options.**
+- Add a third operand group — does not work; it hits `45% on the case` at the second term.
+- A `rate_term(owner, seq, kind, pct, amount, unit, basis)` table. Correct, and the shape
+  D-0013 already rejected once for turning every duty lookup into a join.
+- Hybrid: wide columns for what fits, `rate_term` rows only for what does not, and split
+  `prose` into `multi_term` versus genuinely unreadable.
+- Leave the cap at two and write the limit down.
+
+**Decision.** The fourth, for this submission. The 138 rows keep `rate_kind='prose'` with
+`rate_text` intact and a `parse_issue` row each, so the duty is displayable, citable and
+listable — just not computable.
+
+**Tradeoff.** 0.47% of the base schedule carries a duty that cannot be calculated, and the
+`prose` bucket now conflates two unlike failures — "known shape, no columns for it" and "an
+English sentence" — which makes 305 issues look worse than it is. Accepted because none of
+it is in Chapter 99, which is the subject of the exercise. Wrong the moment Part 3 tries to
+compute a landed cost in chapter 91, or a future revision writes a Chapter 99 provision in
+this form; the hybrid option is the entry that would supersede this one.
+
+**Feeds.** SUBMISSION.md §4, §5
+
+---
+
+## D-0027 — Column 1 Special is stored as printed and never interpreted
+**Date:** 2026-08-24 · **Area:** schema, scope · **Status:** accepted
+
+**Context.** 7,099 of 26,246 base rows carry a Special rate, e.g.
+`Free (BH,CL,JO,KR,MA,OM,P,PA,PE,SG) See 9822.04.25 (AU) See 9823.07.01-9823.07.07 (S+)`.
+Asked in review how eligibility is determined. It cannot be, from these three sources.
+Four things are needed and none is present: the SPI code table (`A+`, `S+`, `D`) defined in
+General Note 3(a)(iv); the rules of origin, one set per agreement, living in a General Note
+each (GN 4 GSP, GN 12 USMCA, GN 25 Korea); the importer's claim, since Special applies only
+when an SPI prefix is filed and origin is certified; and, for 199 rows, Chapter 98 itself —
+their Special treatment reads `See 9822.04.25`, and **the scraper fetches 0100-9799 and
+9900-9999, so chapter 98 is in neither payload**. Those 199 citations point at nothing.
+Measured: 20 distinct SPI codes appear, the widest (`OM`) on all 7,099 rows.
+
+**Options.**
+- Parse the SPI lists into a `rule_special(hts, spi_code, rate)` table — extracts country
+  codes, but eligibility still cannot be answered, so it dresses an unanswerable question
+  as a resolved one.
+- Fetch chapter 98 and resolve the 199 citations — the scraper handles it with one more
+  `Source`, but it widens scope beyond Chapter 99 for 0.8% of rows.
+- Keep `special_text` as printed prose, and have the UI name the General Note a reader must
+  consult.
+
+**Decision.** The third. `special_text` is stored verbatim and nothing downstream reads it
+as structure. Eligibility is a supply-chain question — whether a shirt sewn in Korea from
+Chinese fabric is Korean-originating — and the answer is not in the tariff schedule at all.
+
+**Tradeoff.** A user seeing `Free (KR)` is not told that KR is the Korea FTA, which is a
+poor experience for the exact novice Part 3 targets. The cheapest fix is a hardcoded SPI
+code-to-programme table of about 30 entries with its General Note cited — worth doing, and
+distinct from claiming to judge eligibility. Wrong if Part 3 ever presents a duty as "what
+you will pay" rather than "the Column 1 General rate", because Special is what an importer
+with an FTA claim actually pays.
+
+**Feeds.** SUBMISSION.md §4, §5
+
+---
+
+---
+
+## D-0025 — Column 2 gets its own inheritance provenance
+**Date:** 2026-08-24 · **Area:** schema · **Status:** accepted · extends D-0014
+
+**Context.** D-0014 materialises the inherited Column 1 rate and records the ancestor it
+came from. Column 2 inherits on the same tree, and the obvious economy is to let one
+`rate_inherited_from` speak for both: the two rates are printed on the same row 11,414
+times out of 11,415, so a single column would be right almost always.
+
+Almost. Querying the loaded table for rows where the two chains disagree returns exactly
+one:
+
+```
+      hts      | rate_text | rate_inherited_from | col2_rate_text | col2_inherited_from
+---------------+-----------+---------------------+----------------+---------------------
+ 9006.59.15.20 | Free      | 9006.59.15          | 20%            |
+```
+
+`9006.59.15.20` states its own Column 2 rate while inheriting Column 1. A shared column
+would have attributed that 20% to `9006.59.15`, which never stated it.
+
+**Options.**
+- One shared `rate_inherited_from` — one fewer column, and wrong for one row.
+- A shared column plus a boolean saying the two agree — same size problem, more to read.
+- A separate `col2_inherited_from`.
+
+**Decision.** The third. Column 2 inherits on its own chain and records its own ancestor.
+
+**Tradeoff.** A column that is redundant on 26,245 of 26,246 rows. It is worth it because
+the one row it exists for is undetectable without it: a wrong `rate_inherited_from` shows
+up nowhere in the rate itself, only in the provenance a reviewer would be checking *with*
+this column. The frequency argument would also be revision-specific — nothing guarantees
+the next revision has only one such row.
+
+**Feeds.** SUBMISSION.md §2
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
@@ -807,3 +1049,8 @@ numbered entry above once decided — do not decide them here.
   `note_subheading`.
 - ~~**P-f · Provenance grain.**~~ Settled by **D-0005**: per source per run, written to
   both `manifest.json` and a `source_fetch` table.
+- **P-j · Chapter 98 is outside the fetch range.** 199 base rows resolve their Special
+  treatment through `See 98xx.xx.xx`, and the scraper fetches `0100-9799` plus `9900-9999`,
+  so chapter 98 exists in no payload. Decide whether to add it as a fourth `Source` — the
+  scraper needs one entry in `SOURCES` and nothing else — or to leave the citations
+  unresolved and say so on screen. See D-0027.

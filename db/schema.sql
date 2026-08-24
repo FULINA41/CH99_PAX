@@ -94,9 +94,15 @@ CREATE INDEX source_fetch_lookup_idx
 --
 --   'Free'              free      pct=0
 --   '2.5%'              replace   pct=2.5
---   '14.27c/liter'      replace   amount=14.27  unit='liter'
---   '4.4c/kg + 8.5%'    replace   amount=4.4    unit='kg'    pct=8.5
+--   '14.27c/liter'      replace   amount=0.1427  unit='liter'
+--   '4.4c/kg + 8.5%'    replace   amount=0.044   unit='kg'    pct=8.5
 --   a sentence          prose     nothing computable; rate_text holds the words
+--
+-- rate_specific_amount is always in DOLLARS: a rate printed in cents is divided by 100,
+-- so $1.104/kg and 46.3c/kg can be compared and multiplied without re-reading rate_text
+-- to find out which symbol was printed. rate_specific_unit keeps any qualification the
+-- schedule attached -- 'clean kg', 'kg on drained weight' -- because a qualified basis is
+-- not the plain unit, and a calculator handed plain kg would overcharge.
 --
 -- 'free' is 'replace' with pct 0, kept separate only because the schedule writes it
 -- as a word: a calculation may ignore the distinction, a display should not.
@@ -134,6 +140,11 @@ CREATE TABLE hts_base (
   col2_ad_valorem_pct  numeric,
   col2_specific_amount numeric,
   col2_specific_unit   text,
+  -- Column 2 inherits on its own chain: it is almost always stated on the same row as
+  -- Column 1, but not always -- 9006.59.15.20 states its own Column 2 while inheriting
+  -- Column 1. Recorded separately so a materialised Column 2 rate can say where it came
+  -- from, exactly as D-0014 requires of Column 1.
+  col2_inherited_from  text REFERENCES hts_base(hts) ON DELETE SET NULL,
 
   -- Column 1 Special, as printed. Decoding 'A+', 'KR', 'AU' needs the HTS General
   -- Notes, which none of the three sources contains — see DATA_INVENTORY.md 5.
