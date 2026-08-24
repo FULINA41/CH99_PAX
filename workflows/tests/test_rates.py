@@ -63,3 +63,23 @@ def test_every_spelling_of_the_additive_form_yields_the_same_operand(text):
 
 def test_the_printed_text_survives_a_rate_that_cannot_be_parsed():
     assert parse_rate("See additional U.S. note 1").text == "See additional U.S. note 1"
+
+
+# 'a duty of' is a wording variant of '+ 25%', but only when the percentage is the whole
+# operand. '25% upon the value of the non-U.S. content' applies to a different basis, and
+# storing it as a plain 25% would overcharge the full entered value (D-0026).
+def test_a_duty_of_is_read_as_an_ordinary_additive_rate():
+    rate = parse_rate("The duty provided in the applicable subheading + a duty of 25%")
+
+    assert rate.kind == "additive"
+    assert rate.ad_valorem_pct == 25.0
+
+
+def test_an_additive_rate_on_a_narrower_basis_stays_unparsed():
+    rate = parse_rate(
+        "The duty provided in the applicable subheading + a duty of 25% upon the "
+        "value of the non-U.S. content"
+    )
+
+    assert rate.kind == "prose"
+    assert rate.ad_valorem_pct is None

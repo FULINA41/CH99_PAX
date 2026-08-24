@@ -69,11 +69,11 @@ erDiagram
 | `source_fetch` | 3 per run | provenance | Which download each row came from | A reviewer asking where the data is from; diagnosing two runs that disagree |
 | `hts_base` | 26,246 | fact | Chapters 1–97: the codes goods are classified under | Step one of every duty calculation |
 | `rule` | 3,098 | fact | Chapter 99 provisions: what modifies those duties | Step two of every duty calculation |
-| `rule_edge` | ~2,900 | fact | The codes a provision names, unresolved | Auditing the matcher; following exclusions |
-| `rule_country` | ~250 | fact | The countries a provision names | The moment a user types "China" |
-| `rule_identifier` | ~1,034 | fact | CAS numbers | Choosing between several provisions on one base code |
+| `rule_edge` | 14,229 | fact | The codes a provision names, unresolved | Auditing the matcher; following exclusions |
+| `rule_country` | 401 | fact | The countries a provision names | The moment a user types "China" |
+| `rule_identifier` | 1,229 | fact | CAS numbers | Choosing between several provisions on one base code |
 | `note` | ~120 | fact | U.S. notes from the PDF | A user asking "on what authority" |
-| `rule_note` | ~973 | fact | A provision citing a note | Jumping from a provision to the legal text |
+| `rule_note` | 926 | fact | A provision citing a note | Jumping from a provision to the legal text |
 | `note_subheading` | thousands | fact | The codes a list-type note prints | Working out what Section 301 covers |
 | `rule_base_match` | tens of thousands | **interpretation** | Which base rows a provision reaches | The main query once a user supplies a code |
 | `parse_issue` | non-empty | honesty | Everything that parsed into nothing | Self-review before submission; telling a user "I could not read this one" |
@@ -248,7 +248,7 @@ Chinese goods by 25 points.
 | Column | Meaning | When it is used |
 | --- | --- | --- |
 | `source_hts` | The provision, FK to `rule` | |
-| `edge_type` | `references` — "provided for in X" · `excludes` — "except for products of Y" | **`excludes` is what decides whether a provision still applies**: 324 provisions carry an exclusion, naming 864 other Chapter 99 codes between them, and exclusions form a graph, not a list |
+| `edge_type` | `references` — "provided for in X" · `excludes` — "except for products of Y" | **`excludes` is what decides whether a provision still applies**: 214 provisions carry one, naming 859 other Chapter 99 codes between them, and exclusions form a graph, not a list. An exclusion is recognised by its lead-in (`Except for products described in …`, `Except as provided in …`), not by the word "except": 217 of the 431 "except" clauses in this revision are parentheticals inside a product description — `of bovine (except calfskin) leather` — and carve out nothing |
 | `target_hts` | The code as printed. **No foreign key, no normalisation** | ① auditing `rule_base_match` against what was actually cited ② **the 50 unresolvable codes live here** — some are real codes retired in this revision, some are regex noise (`2022`, `0090`), and both are worth keeping |
 
 ---
@@ -259,8 +259,8 @@ Chinese goods by 25 points.
 | --- | --- | --- |
 | `rule_hts` | The provision | |
 | `country_name` | As written: `Mexico`, `the People's Republic of China` | Quoting the provision's own words in the UI |
-| `country_code` | ISO alpha-2 where the name normalised, NULL where it did not | **A user types "China" → normalised to `CN` → this column is queried.** The actual entry point of the country path |
-| `relation` | `product_of` \| `excluded` | **`excluded` is not decoration**: reciprocal-tariff headings name a broad group and then carve members out, so reading only `product_of` over-applies the duty |
+| `country_code` | ISO 3166-1 alpha-2, resolved against the register `pycountry` ships. 391 of 397 links carry one; the six without are all `European Union`, which is not a country and correctly has none | **A user types "China" → `CN` → this column is queried.** It is also what makes one country one key: the schedule writes `Russia` on two headings and `Russian Federation` on three, including the Section 232 steel pair, and only the code brings all five back together |
+| `relation` | `product_of` \| `excluded` | **Only `product_of` occurs in this revision.** Four phrasings of a country carve-out (`other than products of`, `excluding products of`, …) return zero rows: reciprocal-tariff headings carve out *headings*, through `rule_edge`, not countries. `excluded` is kept because the distinction is real in principle and costs nothing, but nothing populates it and the UI must not imply otherwise |
 
 Note 2(a) makes "country of origin" a defined term rather than a label: goods of Mexico
 under 19 CFR part 102, **or** goods for which Mexico was the last country of substantial

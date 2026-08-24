@@ -700,8 +700,6 @@ that is right for a month.
 
 ---
 
----
-
 ## D-0022 — Re-derive the Chapter 99 evidence from the payload the workflow actually fetches
 **Date:** 2026-08-23 · **Area:** process · **Status:** accepted
 
@@ -816,8 +814,6 @@ rows silently. Wrong if a reconstructed row is ever read as evidence that a fetc
 rather than as evidence of what the bytes are.
 
 **Feeds.** SUBMISSION.md §2, §5
-
----
 
 ---
 
@@ -981,9 +977,7 @@ with an FTA claim actually pays.
 
 ---
 
----
-
-## D-0025 — Column 2 gets its own inheritance provenance
+## D-0028 — Column 2 gets its own inheritance provenance
 **Date:** 2026-08-24 · **Area:** schema · **Status:** accepted · extends D-0014
 
 **Context.** D-0014 materialises the inherited Column 1 rate and records the ancestor it
@@ -1015,6 +1009,202 @@ the one row it exists for is undetectable without it: a wrong `rate_inherited_fr
 up nowhere in the rate itself, only in the provenance a reviewer would be checking *with*
 this column. The frequency argument would also be revision-specific — nothing guarantees
 the next revision has only one such row.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
+## D-0029 — An exclusion is recognised by its lead-in, not by the word "except"
+**Date:** 2026-08-24 · **Area:** parser · **Status:** accepted · corrects the exclusion figures in D-0022
+
+**Context.** The first implementation bounded an exclusion clause as `\bexcept\b[^.;]*`.
+A unit test failed on a hand-written example, and the reason invalidated an earlier
+verification rather than just the code: **codes contain dots**, so `[^.;]*` ended the
+clause at the first `.` of `9903.01.02`. The measurement that had concluded "no exclusion
+clause names a code outside Chapter 99" was taken with that same expression, so it had
+never looked past the first code.
+
+Widening the boundary to admit a dot followed by a digit exposed the real problem in the
+other direction: `\bexcept\b` matches 431 clauses, and 217 of them are parentheticals
+inside a product description — `Gloves of bovine (except calfskin) leather` — which carve
+out no heading at all.
+
+**Options.**
+- Keep `\bexcept\b` and rely on only 9903 codes being extracted — works today, and treats
+  a description as an exclusion, so any future carve-out phrased with a base code would
+  be silently misread.
+- Match the lead-ins the schedule actually uses.
+
+**Decision.** The second: `except for products|goods|articles described in` or
+`except as provided (for) in`, then to the end of the sentence with a period only
+terminating when not followed by a digit. That yields **214 provisions and 859 exclusion
+edges**, against the 324 / 864 recorded in D-0022 from the loose expression.
+
+**Tradeoff.** A phrasing not in this revision's four forms will be missed silently, since
+there is no "unrecognised except clause" issue kind — the 217 parentheticals would flood
+it. The four forms cover every exclusion in 2026HTSRev16, and a fifth appearing in a later
+revision is a real risk this does not guard against.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0030 — Leave `rule_country.country_code` NULL rather than hand-write an ISO map
+**Date:** 2026-08-24 · **Area:** parser · **Status:** accepted · superseded by D-0032
+
+**Context.** `rule_country` was designed with an ISO 3166-1 alpha-2 column so Part 3 could
+turn "China" into a key. Extraction finds **100 distinct country names across 393
+provisions**, plus 13 occurrences that name no country at all ("any country", "a member
+state of the European Union") which go to `parse_issue`. None of the three sources
+contains a country-code list; it would have to be written by hand.
+
+**Options.**
+- Hand-write 100 name-to-code pairs — one afternoon, unverifiable against any source in
+  this repository, and authoritative-looking whether or not it is right.
+- Map the frequent names only — the column then means "code, when we bothered", and a
+  NULL cannot be told from a country we could not resolve.
+- Leave it NULL and match on `country_name`.
+
+**Decision.** The third. `country_name` is stored cleaned — article dropped, `X or Y`
+split into two rows — and matching runs against it, which is what `pg_trgm` is installed
+for. `country_code` stays in the schema as the place a sourced mapping would go.
+
+**Tradeoff.** Part 3 matches strings, so "PRC" or "中国" will not find "China" without a
+synonym layer. The column existing while empty is its own hazard — a reader may assume it
+is populated — which is why both schema references now say so in the row that describes
+it.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+## D-0031 — 'a duty of' is a wording variant; 'upon the value of the non-U.S. content' is not
+**Date:** 2026-08-24 · **Area:** parser · **Status:** accepted · Extends D-0026
+
+**Context.** Four Chapter 99 provisions landed in `parse_issue` as `unparsed_rate`, and the
+first reading was that three shared one bug: `ADDITIVE` requires `+ 25%` and they write
+`+ a duty of 25%`. Counting every variant in the payload before touching the regex changed
+the answer. 446 rows say "the duty provided", in eight spellings:
+
+```
+234  ... applicable subheading + N%                                    additive
+204  ... applicable subheading                                         no_change
+  2  ... + N%   (no space)          1  ... plus N%      1  'inthe' typo additive
+  1  ... + a duty of N%                                                UNPARSED
+  2  ... + a duty of N% upon the value of the non-U.S. content         UNPARSED
+  1  The duty provided in subheadings 8716.39.00, ... + N%             UNPARSED
+```
+
+Only the single bare `+ a duty of N%` is the same rule written differently. The two rows
+adding `upon the value of the non-U.S. content` apply the percentage to part of the entered
+value, not all of it — the same class as D-0026's `45% on the case`. Widening the regex as
+first proposed would have stored them as a plain 25%, overcharging the full value with
+nothing in the data to show it.
+
+**Options.**
+- Widen `(?:\+|plus)\s*` to swallow `a duty of` anywhere after the operator — gains three
+  rows and silently corrupts two of them.
+- Leave all four unparsed — safe, and loses a row that is unambiguous.
+- Add `(?:a\s+duty\s+of\s+)?` while keeping the `$` anchor, so the variant matches only
+  when the percentage is the entire operand.
+
+**Decision.** The third. The anchor is the whole safeguard, so the comment beside the regex
+says so: it is the character most likely to be deleted by someone widening the pattern
+later. Verified against all 446 rows — 239 additive, 204 no_change, 3 prose, and zero
+reclassifications among the 234 already-correct standard spellings.
+
+**Tradeoff.** One row recovered out of 3,098, for a regex that is now harder to read. Worth
+it only because the rule it recovers is a Section 232 additive duty, which is the subject of
+the exercise rather than a footnote. The remaining three stay `prose` and each is honest:
+two have a narrower base, one takes its base from three named subheadings instead of "the
+applicable subheading" — see P-k.
+
+**Feeds.** SUBMISSION.md §5, §6
+
+---
+
+## D-0032 — Resolve country codes from the ISO register, exactly, with a five-line alias table
+**Date:** 2026-08-24 · **Area:** parser · **Status:** accepted · supersedes D-0030
+
+**Context.** D-0030 left `country_code` NULL because the only way to fill it looked like
+hand-writing 100 name-to-code pairs, which would be unverifiable data that reads as
+authoritative. Two things changed that.
+
+The first is a correctness argument the earlier entry missed. The schedule names the same
+country two ways, and without a code they are two keys:
+
+```
+ country_code |    names_in_the_schedule    |                    rules
+--------------+-----------------------------+---------------------------------------------
+ RU           | Russia / Russian Federation | 9903.05.66, 9903.82.17, 9903.85.67,
+              |                             | 9903.90.08, 9903.90.09
+```
+
+`Russia` carries two headings and `Russian Federation` three — including `9903.90.08` and
+`9903.90.09`, the Section 232 steel pair. A user asking about Russia got two rules or
+three depending on which spelling they typed. That is a wrong answer, not a missing
+convenience.
+
+The second is that `pycountry` is not a hand-written table: it ships the ISO 3166
+register. The objection in D-0030 was to unverifiable data entry, and it does not apply.
+
+**Options.**
+- Keep matching on `country_name` and add a synonym table for the spellings that collide —
+  fixes Russia, leaves every future collision to be discovered by a user.
+- `pycountry` exact matching plus `search_fuzzy` for the rest — resolves 94 of 97 names
+  automatically, and `search_fuzzy` guesses: it lands on `RU` for `Russia` today, and
+  nothing about it guarantees the next unfamiliar name lands on the right neighbour rather
+  than a plausible one.
+- Exact matching only, with the residue written down.
+
+**Decision.** The third. `pycountry.countries.get` against `name`, `common_name` and
+`official_name` resolves **91 of 97**. Five more go in an `ALIASES` dict, each a rename or
+an inversion inside ISO 3166 itself with the reason on the line: `Russia` (ISO says
+Russian Federation), `Turkey` (ISO renamed it Türkiye in 2022), `Democratic Republic of
+the Congo` (ISO inverts the word order), `Brunei`, `Falkland Islands`. `European Union` is
+listed as `NOT_A_COUNTRY` and keeps a NULL, because a bloc having no code is the right
+answer rather than a failure.
+
+A name that resolves to neither raises an `unresolved_country` issue. There are none in
+this revision: 391 of 397 links carry a code and all six without are the European Union.
+
+**Tradeoff.** A 7.7 MB dependency for 95 codes, and `ALIASES` needs revisiting whenever
+ISO renames a country — which is exactly the event it exists to absorb, and the parser
+will say so through `parse_issue` rather than silently dropping the country. Exact-only
+matching also means a genuinely new spelling fails loudly instead of being guessed at,
+which is the intended direction.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
+## D-0033 — Split a country list on "and" except where the name contains one
+**Date:** 2026-08-24 · **Area:** parser · **Status:** accepted
+
+**Context.** Country extraction split captures on both `or` and `and`, which turned
+`Bosnia and Herzegovina` into `Bosnia` plus `Herzegovina` and `Trinidad and Tobago` into
+`Trinidad` plus `Tobago` — four names, none of them a country. Separately, dropping only a
+leading `the` left `of the United Kingdom` behind from "the product of Germany **or of
+the** United Kingdom", so that provision never joined the other eight UK rules.
+
+Not splitting on `and` at all was the obvious repair, and it is wrong: `China and Hong
+Kong` occurs five times and genuinely is two jurisdictions. That fix would have removed
+four bad names and created a fifth, while dropping five China links and five Hong Kong
+links.
+
+**Options.**
+- Split on `or` only — four bad names become one, and 10 real links are lost.
+- Split on both and repair the known casualties afterwards — the repair list is the same
+  data as the exception list, applied later and less obviously.
+- Split on `and` unless the whole phrase is a country whose name contains one.
+
+**Decision.** The third, with a 14-entry `COMPOUND_NAMES` set — the ISO 3166 names
+containing "and". Article stripping now removes a leading `of the` as well as `the`.
+Distinct country names went from 100 to **97**, and a query for names not matching
+`^[A-Z][A-Za-z'\- ]+$` returns zero rows.
+
+**Tradeoff.** A country whose name contains "and" and is missing from the set gets split
+silently — the same failure the fix removes, one name at a time. The set is small enough
+to check against ISO 3166 by eye, and once `pycountry` is present (D-0032) it could be
+derived rather than written, which would close the gap entirely.
 
 **Feeds.** SUBMISSION.md §2
 
@@ -1054,3 +1244,9 @@ numbered entry above once decided — do not decide them here.
   so chapter 98 exists in no payload. Decide whether to add it as a fourth `Source` — the
   scraper needs one entry in `SOURCES` and nothing else — or to leave the citations
   unresolved and say so on screen. See D-0027.
+- **P-k · An additive duty whose base is named, not implied.** `9903.91.12` reads "The duty
+  provided in subheadings 8716.39.00, 8716.90.30 or 8716.90.50 + 100%". Every other additive
+  provision modifies "the applicable subheading" — whatever the goods classified under —
+  while this one names the base itself. `rate_kind` has no operator for it and it stays
+  `prose`. One row today; decide whether a `rate_base_hts` column earns its place, or
+  whether `rule_edge` already carries enough to reconstruct it.

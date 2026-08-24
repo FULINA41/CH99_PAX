@@ -745,5 +745,203 @@ Verified rather than assumed. The two chains disagree on exactly one row in 26,2
 
 11,779 Column 1 rates and 11,778 Column 2 rates are inherited, across 3,267 distinct
 ancestors. Schema re-applied from empty, parser re-run, 54 tests pass, and two consecutive
-runs produce an identical whole-table md5. Written up as D-0025 and added to both schema
+runs produce an identical whole-table md5. Written up as D-0028 and added to both schema
 references, which had described Column 2 as "the same five columns".
+
+---
+
+## 2026-08-24 — Part 2, Step 3: Chapter 99 provisions
+
+`parsing/ch99.py`, wired in as `parse_chapter99` running beside `parse_base_schedule` —
+the fact tables it writes carry no foreign key into `hts_base`, so nothing makes it wait.
+62 unit tests pass (54 before).
+
+### Verification
+
+```
+rule        3,098 rows   2,571 by_code  341 by_country_all_goods  186 unknown
+           13,370 code references
+              859 exclusion edges
+              401 country links
+            1,229 CAS numbers
+              926 note citations (unresolved until step 4)
+               17 parse_issue rows
+```
+
+Acceptance:
+
+```
+9903.01.01 | III | by_country_all_goods | additive | 25.0 | Mexico | 4 exclusions
+9903.88.01 | III | 'The duty provided in the applicable subheading plus 25%' -> additive 25
+           |     | cites U.S. note 20(a) to this subchapter, and U.S. note 20(b)
+2922.49.30 | cited by 9902.04.04/.05/.06/.07, each carrying its own CAS number
+```
+
+Subchapter derivation checked against all twelve headings present: 9901→I, 9902→II,
+9903→III, 9904→IV, 9908→VIII, 9915→XV, 9917→XVII … 9922→XXII. The rule that the heading's
+last two digits *are* the subchapter number holds everywhere.
+
+Two consecutive runs produce an identical combined md5 over `rule`, `rule_edge`,
+`rule_country`, `rule_identifier` and `rule_note`.
+
+### A test invalidated an earlier measurement
+
+`_excluded_codes` was written as `\bexcept\b[^.;]*`. A hand-written unit test returned an
+empty list, and the reason was that **codes contain dots** — the clause ended at the first
+`.` of `9903.01.02`. That mattered beyond the bug: the check run two hours earlier
+concluding "no exclusion clause names a code outside Chapter 99, 0 cases" had used the
+same expression, so it had never read past the first code. The verification was vacuous
+and I had recorded it in a code comment as established fact.
+
+Widening the boundary then showed the opposite error: `\bexcept\b` matches 431 clauses in
+this revision and **217 are parentheticals inside a product description** — `of bovine
+(except calfskin) leather` — not exclusions at all. Matching the lead-in instead gives 214
+provisions and 859 edges (D-0029), against the 324 / 864 that D-0022 had recorded from the
+loose expression. That figure is now corrected in both schema references.
+
+### Estimates replaced by parser output
+
+D-0022 said every figure surviving into Step 5 should become a parser output rather than
+an ad-hoc count. Four were replaced today, and the estimates were not close:
+
+| | estimated | actual |
+| --- | ---: | ---: |
+| `rule_edge` | ~2,900 | **14,229** |
+| `rule_country` | ~250 | 401 |
+| `rule_identifier` | ~1,034 | 1,229 |
+| `rule_note` | ~973 | 926 |
+
+`rule_edge` was out by a factor of five because the estimate counted provisions, not
+citations, and a provision routinely names several codes.
+
+### Two things deliberately left as they are
+
+`country_code` is NULL for every row (D-0030): no source in this repository contains an
+ISO list, and hand-writing 100 pairs would be unverifiable data that looks authoritative.
+
+`rule_country.relation` only ever holds `product_of`. Four phrasings of a country carve-out
+were searched for and every one returned zero — reciprocal-tariff headings carve out
+*headings*, not countries. Both schema references said the opposite and have been fixed;
+the claim was written from plausibility rather than from a query.
+
+### Agent notes
+
+The exclusion bug is the third instance of the same failure recorded in this journal:
+producing a confident artifact — a comment, a count, a claim — and only checking it later,
+if at all. What differs here is that the check was forced by a unit test written *before*
+running the parser on real data, and it caught something a full-corpus run would not have,
+since the wrong answer was plausible at every scale.
+
+### A proposed fix that would have overcharged two provisions
+
+Reviewed the 321 `parse_issue` rows. The 305 on `base` are the watch and ensemble rates
+already settled by D-0026. The 17 on `ch99` split into 13 provisions that key on origin
+without naming a country ("any country", "any country determined by USTR", "a member state
+of the European Union") and 4 unparsed rates.
+
+**The first reading of those 4 was wrong, and acting on it would have written bad data.**
+The proposal was that three shared one bug — `ADDITIVE` wants `+ 25%`, they write `+ a duty
+of 25%` — so widening the regex would recover all three. Counting the variants first, as
+Step 2 established, showed otherwise:
+
+```
+234  ... applicable subheading + N%          204  ... applicable subheading (bare)
+  2  ... + N% no space   1  plus N%   1  'inthe' typo
+  1  ... + a duty of N%                                          <- genuinely the same rule
+  2  ... + a duty of N% upon the value of the non-U.S. content   <- a narrower base
+  1  The duty provided in subheadings 8716.39.00, ... + N%       <- a named base
+```
+
+Two of the three apply 25% to the non-U.S. content, not to the entered value. Stored as a
+plain additive 25% they would overcharge the full value, and nothing in the row would show
+it — the same failure D-0026 exists to prevent, arrived at from the opposite direction.
+
+Fixed only the one unambiguous row, keeping the `$` anchor that excludes the other two, and
+wrote a test for each side of the boundary. The test that matters is the negative one: it
+asserts that the narrower base *stays* unparsed. Ran the negative test against the old regex
+first — it already passed, which is the point; it protects a property, not a change.
+
+Verified: 64 tests (62 before). Against all 446 real rows, 239 additive / 204 no_change /
+3 prose, and zero reclassification among the 234 standard spellings. End to end, `ch99`
+issues 17 -> 16, `9903.82.20` now `additive` with `rate_ad_valorem_pct` 25.0. Two
+consecutive runs give the same whole-table md5 for `rule` (`cfe10ca8…`).
+
+**Second numbering collision.** Step 3 wrote D-0025, D-0026 and D-0027, all three already
+taken by entries written earlier the same day. Renumbered the later three to D-0028..D-0030
+and repointed the three journal references; the two code comments citing D-0026 meant the
+earlier entry and were left alone. The first collision was two entries; this one was three,
+so appending without checking the tail is now a repeatable failure rather than a slip. A
+one-line check before writing an entry — `grep -c '^## D-' docs/DECISIONS.md` — would have
+caught both.
+
+**Agent notes.** The agent proposed the three-row fix confidently and was wrong about two of
+them; the error surfaced only because the repo's own habit of counting the data first was
+applied before editing. Left to the proposal, the parser would have produced a wrong duty
+that no test and no issue row would have flagged.
+
+---
+
+## 2026-08-24 — Country extraction, then country codes
+
+Asked whether a country-code table was worth building. Answering it needed the extracted
+names looked at rather than assumed, and the list had five wrong entries in it.
+
+**Three extraction defects, found by reading the output.**
+
+```
+Bosnia | Herzegovina        <- 'Bosnia and Herzegovina' split on ' and '
+Trinidad | Tobago           <- 'Trinidad and Tobago' likewise
+of the United Kingdom       <- 'the product of Germany or of the United Kingdom'
+```
+
+The article stripper removed a leading `the` but not `of the`, so `9903.89.43` never joined
+the other eight UK provisions.
+
+**The obvious repair was wrong.** "Split on `or`, not on `and`" removes four bad names and
+creates a fifth: `China and Hong Kong` occurs five times and is two jurisdictions, so that
+rule would have dropped five China links and five Hong Kong links while inventing a name
+that is neither. Fixed instead with a 14-entry set of ISO names containing "and" (D-0033).
+Distinct names 100 -> 97; a query for names not matching `^[A-Z][A-Za-z'\- ]+$` returns
+zero rows.
+
+**Then the codes.** D-0030 had left `country_code` NULL, arguing that the only way to fill
+it was an unverifiable hand-written table. That entry missed a correctness argument:
+
+```
+ country_code |    names_in_the_schedule    |                    rules
+--------------+-----------------------------+---------------------------------------------
+ RU           | Russia / Russian Federation | 9903.05.66, 9903.82.17, 9903.85.67,
+              |                             | 9903.90.08, 9903.90.09
+```
+
+Two headings say `Russia` and three say `Russian Federation`, and `9903.90.08`/`.09` are
+the Section 232 steel pair. Without a code a user asking about Russia got two rules or
+three depending on spelling — a wrong answer, not a missing convenience. `pycountry` also
+turned out not to be a hand-written table but the ISO 3166 register, so D-0030's objection
+did not apply to it. Superseded by D-0032.
+
+Exact matching only, no `search_fuzzy`. Fuzzy resolves three more names and happens to get
+`Russia` right; it is a heuristic, and a wrong country is worse than a NULL. Those three
+plus two others go in a five-line alias table, each a rename or inversion inside ISO 3166
+with the reason on the line.
+
+**Verified.** 391 of 397 links carry a code, 95 distinct; the six without are all
+`European Union`, which is a bloc and correctly has none. Zero `unresolved_country` issues.
+73 tests (67 before). Two consecutive runs give an identical md5 for `rule_country`
+(`05698987…`).
+
+**Third numbering collision, same failure again.** Appended D-0028/29/30 without reading the
+tail first; all three were taken, and the "superseded" marker landed on D-0027, which is
+about Column 1 Special and has nothing to do with country codes. Renumbered to D-0032 and
+D-0033, and dropped a third entry entirely as a duplicate of D-0031, which had already
+settled the `a duty of` variant from a fuller count than mine.
+
+**Agent notes.** The journal already recorded this exact failure one session earlier, with
+the remedy written out — check the tail before appending — and it happened again anyway.
+Reading a note about a mistake is not the same as having a step that prevents it. The
+recurring shape is broader than numbering: acting on the state I remember instead of the
+state on disk.
+
+The country work went the other way. The user's instruction was to split on `or` only; the
+data said that would break `China and Hong Kong`, and checking before implementing turned a
+correct-sounding rule into a correct one.

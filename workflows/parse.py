@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from client import hatchet
 from parsing.base import load_base, parse_base
+from parsing.ch99 import load_ch99, parse_ch99
 from parsing.db import resolve_source_fetch_ids
 from parsing.manifest import load_manifest
 
@@ -52,7 +53,21 @@ def parse_base_schedule(input: ParseInput, ctx: Context) -> dict[str, Any]:
     return written
 
 
-@parse_workflow.task(parents=[load_payloads, parse_base_schedule])
+@parse_workflow.task(parents=[load_payloads], execution_timeout=PARSE_TIMEOUT)
+def parse_chapter99(input: ParseInput, ctx: Context) -> dict[str, Any]:
+    # Runs beside parse_base_schedule, not after it: the fact tables it writes carry no
+    # foreign key into hts_base. Only the resolver needs both, and that is Step 5.
+    source = ctx.task_output(load_payloads)["sources"]["ch99"]
+
+    data = parse_ch99(source["path"], source_fetch_id=source["source_fetch_id"])
+    written = load_ch99(data, run_id=ctx.workflow_run_id)
+
+    ctx.log(f"rule: {written['rules']:,} rows, {written['references']:,} references, "
+            f"{written['excludes']:,} exclusions, {written['issues']:,} issues")
+    return written
+
+
+@parse_workflow.task(parents=[load_payloads, parse_base_schedule, parse_chapter99])
 def summarize(input: ParseInput, ctx: Context) -> dict[str, Any]:
     loaded = ctx.task_output(load_payloads)
 
@@ -63,4 +78,5 @@ def summarize(input: ParseInput, ctx: Context) -> dict[str, Any]:
             key: entry["source_fetch_id"] for key, entry in loaded["sources"].items()
         },
         "hts_base": ctx.task_output(parse_base_schedule),
+        "chapter99": ctx.task_output(parse_chapter99),
     }

@@ -33,6 +33,16 @@ def _report(summary: dict) -> None:
     print(f"          {base['prose_rates']:>7,} rates that cannot be computed")
     print(f"          {base['issues']:>7,} parse_issue rows")
 
+    ch = summary["chapter99"]
+    print(f"\nrule      {ch['rules']:>7,} rows   " +
+          "  ".join(f"{n:,} {name}" for name, n in sorted(ch["scopes"].items())))
+    print(f"          {ch['references']:>7,} code references")
+    print(f"          {ch['excludes']:>7,} exclusion edges")
+    print(f"          {ch['countries']:>7,} country links")
+    print(f"          {ch['identifiers']:>7,} CAS numbers")
+    print(f"          {ch['note_citations']:>7,} note citations (unresolved until step 4)")
+    print(f"          {ch['issues']:>7,} parse_issue rows")
+
 
 if __name__ == "__main__":
     main()

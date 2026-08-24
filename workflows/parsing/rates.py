@@ -11,9 +11,13 @@ AMOUNT = re.compile(
 )
 
 NO_CHANGE = ('no change', 'the duty provided in the applicable subheading')
+# 'a duty of' is a wording variant, not a different rule: '+ 25%' and '+ a duty of 25%'
+# say the same thing. The trailing anchor is what keeps the variant honest -- two rows read
+# '+ a duty of 25% upon the value of the non-U.S. content', which is 25% of a narrower base
+# and stays prose rather than being stored as 25% of the entered value (D-0026).
 ADDITIVE = re.compile(
     r'^the duty provided in\s*the applicable subheading\s*(?:\+|plus)\s*'
-    r'(\d+(?:\.\d+)?)\s*%$',
+    r'(?:a\s+duty\s+of\s+)?(\d+(?:\.\d+)?)\s*%$',
     re.IGNORECASE,
 )
 
