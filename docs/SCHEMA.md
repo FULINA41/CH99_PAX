@@ -35,9 +35,9 @@ Three consequences worth stating up front:
   printed — an 8-digit code matching no row in `hts_base`, and occasionally a code that no
   longer exists. A foreign key would force the parser to discard the citations most worth
   investigating.
-- **`rule_base_match` can be dropped and rebuilt** from `rule_edge` and `note_subheading`
-  without re-reading a sentence of prose. If the matcher has a bug, nothing upstream is
-  re-parsed.
+- **`rule_base_match` and `note_base_match` can be dropped and rebuilt** from `rule_edge`
+  and `note_subheading` without re-reading a sentence of prose. If the matcher has a bug,
+  nothing upstream is re-parsed.
 - **`parse_issue` is expected to be non-empty.** An empty one after a full run means the
   parser is not checking, not that the data is clean.
 
@@ -61,7 +61,8 @@ erDiagram
 
     rule            ||--o{ rule_base_match : "resolves to"
     hts_base        ||--o{ rule_base_match : "reached by"
-    note            ||--o{ rule_base_match : "via"
+    note            ||--o{ note_base_match : "expands to"
+    hts_base        ||--o{ note_base_match : "reached by"
 ```
 
 | Table | Rows | Layer | Holds | Who reads it |
@@ -75,7 +76,8 @@ erDiagram
 | `note` | ~120 | fact | U.S. notes from the PDF | A user asking "on what authority" |
 | `rule_note` | 926 | fact | A provision citing a note | Jumping from a provision to the legal text |
 | `note_subheading` | thousands | fact | The codes a list-type note prints | Working out what Section 301 covers |
-| `rule_base_match` | tens of thousands | **interpretation** | Which base rows a provision reaches | The main query once a user supplies a code |
+| `rule_base_match` | 16,958 | **interpretation** | The base rows a provision names itself | The main query once a user supplies a code |
+| `note_base_match` | 79,087 | **interpretation** | The base rows a note's list reaches | The other half of that query, joined through `rule_note` |
 | `parse_issue` | non-empty | honesty | Everything that parsed into nothing | Self-review before submission; telling a user "I could not read this one" |
 
 ---
@@ -348,29 +350,57 @@ every code is exactly 10 characters.
 
 ---
 
-## 10. `rule_base_match` — the interpretation layer
+## 10. `rule_base_match` and `note_base_match` — the interpretation layer
 
-The only *derived* table here. Drop it and it rebuilds from `rule_edge` and
+The only *derived* tables here. Drop both and they rebuild from `rule_edge` and
 `note_subheading` without re-reading any prose.
 
-| Column | Meaning | When it is used |
+There are two because a provision reaches base codes two ways, and the second one
+multiplies. `rule_base_match` holds the codes a provision names itself — **16,958 rows**.
+`note_base_match` holds the codes a *note* lists, expanded once per note rather than once
+per provision that cites it — **79,087 rows**. Storing the note path per provision was
+measured first: note 52 lists 4,166 codes and is cited by 98 provisions, note 2 lists 2,322
+and is cited by 150, and the table came to roughly **4.7 million rows**, nearly all of them
+the same expansion written again (D-0036).
+
+| `rule_base_match` | Meaning | When it is used |
 | --- | --- | --- |
 | `rule_hts` | The provision | |
-| `base_hts` | A base row it reaches. **A real foreign key** | **The main query once a user supplies a 10-digit code**: `WHERE base_hts = ?` |
+| `base_hts` | A base row it names. **A real foreign key** | **The main query once a user supplies a 10-digit code**: `WHERE base_hts = ?` |
 | `cited_code` | The 8-digit string that produced this match | **Makes the derivation visible**: "you are in scope because the provision cited 7208.51" |
-| `match_kind` | `exact` \| `prefix` | Showing confidence: `prefix` means the provision covers a whole family, which is worth confirming with the user |
-| `via` | `description` \| `note` | Explaining the path: "the provision named your code" versus "note 20(b)'s list contains it" |
-| `note_id` | Which note, when `via = 'note'` | Jumping straight to that note's text |
+| `match_kind` | `exact` \| `prefix` | Showing confidence: `prefix` means the provision covers a whole family, worth confirming with the user |
 
-Matching is prefix matching **anchored at a separator**: `x = c OR x LIKE c || '.%'`. A
-bare prefix test would let `2922.49.3` match `2922.49.30`. Expansion varies by three orders
-of magnitude, which is why it is materialised rather than recomputed per query:
+| `note_base_match` | Meaning | When it is used |
+| --- | --- | --- |
+| `note_id` | The note whose list this came from | Joined through `rule_note` to reach the provisions that cite it |
+| `base_hts`, `cited_code`, `match_kind` | As above | `note_id` is also the answer to "why" — it is the note whose text the UI quotes |
+
+**A provision's full coverage is the union of two queries**, which is the same trade
+D-0018 made for country-wide provisions: a second query in exchange for not materialising
+a product.
+
+```sql
+SELECT rule_hts FROM rule_base_match WHERE base_hts = ?
+UNION
+SELECT n.rule_hts FROM rule_note n
+  JOIN note_base_match m ON m.note_id = n.note_id
+ WHERE m.base_hts = ?;
+```
+
+Matching is prefix matching **anchored at a separator**: a row matches when its code equals
+the citation or extends it after a dot. A bare prefix test would let `2922.49.3` reach
+`2922.49.30`. Expansion varies by three orders of magnitude, which is why it is
+materialised rather than recomputed per query:
 
 ```
 2922.49.30   →    1 base row
 7208.51      →    4
 4202         →  108      a 4-digit heading covers a whole product family
 ```
+
+`rule.scope` is corrected here, not in the Chapter 99 parser: **306 provisions** were filed
+as `by_country_all_goods` or `unknown` and became `by_code` once their note turned out to
+be a list. The final split is 2,877 / 102 / 119.
 
 ---
 

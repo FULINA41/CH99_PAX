@@ -10,6 +10,7 @@ from parsing.ch99 import load_ch99, parse_ch99
 from parsing.db import resolve_source_fetch_ids
 from parsing.manifest import load_manifest
 from parsing.notes import load_notes, parse_notes
+from parsing.resolve import resolve
 
 # Loading 26,246 rows takes longer than the engine's 60s default, and a task cancelled
 # mid-insert would roll back rather than corrupt -- but it would also report nothing.
@@ -82,7 +83,23 @@ def parse_us_notes(input: ParseInput, ctx: Context) -> dict[str, Any]:
     return written
 
 
-@parse_workflow.task(parents=[load_payloads, parse_base_schedule, parse_chapter99, parse_us_notes])
+@parse_workflow.task(
+    parents=[parse_base_schedule, parse_chapter99, parse_us_notes],
+    execution_timeout=PARSE_TIMEOUT,
+)
+def resolve_citations(input: ParseInput, ctx: Context) -> dict[str, Any]:
+    # Last, and the only task that reads tables three others wrote. Everything it produces
+    # is derived, so it can be rebuilt without re-reading a payload (D-0015).
+    written = resolve(run_id=ctx.workflow_run_id)
+
+    ctx.log(f"rule_base_match {written['rule_matches']:,} rows, note_base_match "
+            f"{written['note_matches']:,} rows, {written['rescoped']:,} provisions rescoped")
+    return written
+
+
+@parse_workflow.task(
+    parents=[load_payloads, parse_base_schedule, parse_chapter99, parse_us_notes,
+             resolve_citations])
 def summarize(input: ParseInput, ctx: Context) -> dict[str, Any]:
     loaded = ctx.task_output(load_payloads)
 
@@ -95,4 +112,5 @@ def summarize(input: ParseInput, ctx: Context) -> dict[str, Any]:
         "hts_base": ctx.task_output(parse_base_schedule),
         "chapter99": ctx.task_output(parse_chapter99),
         "notes": ctx.task_output(parse_us_notes),
+        "resolved": ctx.task_output(resolve_citations),
     }

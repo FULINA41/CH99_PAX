@@ -24,7 +24,7 @@ COPY_IN = f"COPY hts_base ({', '.join(COLUMNS)}) FROM STDIN"
 # one at a time: measured at 10.4s against 0.00s truncated. The tables are named rather
 # than CASCADEd so that a new table referencing hts_base fails here loudly instead of
 # being emptied without anyone deciding it should be.
-TRUNCATE = "TRUNCATE hts_base, rule_base_match"
+TRUNCATE = "TRUNCATE hts_base, rule_base_match, note_base_match"
 
 
 def parse_base(path: str, *, source_fetch_id: int | None) -> tuple[list[dict[str, Any]], list[Issue]]:

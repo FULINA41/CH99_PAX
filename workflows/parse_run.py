@@ -49,6 +49,15 @@ def _report(summary: dict) -> None:
     print(f"          {nt['subheadings']:>7,} codes listed by a note")
     print(f"          {nt['issues']:>7,} parse_issue rows")
 
+    rs = summary["resolved"]
+    print(f"\nresolved  {rs['rule_matches']:>7,} provision -> base matches (cited directly)")
+    print(f"          {rs['note_matches']:>7,} note -> base matches (a note's list, once per note)")
+    print(f"          {rs['notes_linked']:>7,} citations linked to a note")
+    print(f"          {rs['rescoped']:>7,} provisions rescoped once their note was read")
+    print("          scope now  " +
+          "  ".join(f"{n:,} {name}" for name, n in sorted(rs["scopes"].items())))
+    print(f"          {rs['issues']:>7,} parse_issue rows")
+
 
 if __name__ == "__main__":
     main()

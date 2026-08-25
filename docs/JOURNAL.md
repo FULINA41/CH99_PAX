@@ -1006,3 +1006,67 @@ does 20(b) have codes, do the citations resolve — rather than by inspecting ou
 looked reasonable. The two failures that would have been most damaging (note 52 missing, 20(b)
 empty) produced no error and no empty result: they produced a smaller, entirely plausible
 set of notes.
+
+---
+
+## 2026-08-25 — Part 2, Step 5: resolving citations, and Part 2 complete
+
+`parsing/resolve.py`, wired in as `resolve_citations` after the three parse tasks. 91 unit
+tests (84 before). The whole pipeline now runs from an empty database to a queryable one.
+
+```
+hts_base   26,246 rows      11,779 / 11,778 rates inherited      305 uncomputable
+rule        3,098 rows      13,370 references   859 exclusions   397 countries
+note          345 records   36,764 listed codes
+resolved   16,958 provision -> base matches (cited directly)
+           79,087 note -> base matches (once per note)
+              738 citations linked to a note
+              306 provisions rescoped once their note was read
+          scope now  2,877 by_code  102 by_country_all_goods  119 unknown
+```
+
+**The first version did not finish, and the reason was a design error, not a slow loop.**
+Putting the note path into `rule_base_match` means storing note 52's 4,166 codes once for
+each of the 98 provisions that cite it. Measured offline rather than guessed: 805,762
+prefix lookups and roughly **4.7 million rows**, ~98% of them repetition. Split into
+`note_base_match`, keyed by note, it is **79,087** — sixty times smaller (D-0036).
+
+This is the same product D-0018 refused to materialise for country-wide provisions,
+arriving from the other direction, and it is now the second place where the schema trades a
+UNION for a row count.
+
+**D-0025 paid for itself twice.** `TRUNCATE hts_base, rule_base_match` failed with
+`Table "note_base_match" references "hts_base"` — exactly the loud failure that naming
+tables instead of using CASCADE was chosen for. One line to fix, and nothing was silently
+emptied.
+
+### Flagship query, end to end
+
+Steel `7208.51.00.30` from China:
+
+```
+base duty      Free, inherited from 7208.51.00
+by code/note   14 provisions, all via U.S. note 30(d) and note 31 — Section 232 steel
+by country     63 provisions naming China
+```
+
+`9903.88.01` correctly does **not** appear in the code path: it was rescoped to `by_code`
+once note 20(b) was read, and 7208 is not in that list — Section 301 List 1 is machinery
+and electronics. The Section 232 headings that do apply arrive through their own notes.
+The country path returns 63 rows, most of them `no_change` exclusion headings, which an
+application has to narrow with `rule_edge(excludes)`; that is the graph the starting schema
+described and it is now populated.
+
+Ran twice from the same payloads: every figure above is identical on the second run —
+16,958 / 79,087 / 738 / 306 and the same scope split — so the whole pipeline is idempotent
+end to end, not only per task.
+
+288 `parse_issue` rows from this stage: citations naming a note this parse did not find,
+and cited codes matching no row in the base schedule. Both are the residue Step 4 predicted
+and neither is silent.
+
+**Agent notes.** The failure mode here was mine and structural: I wrote the resolver to the
+shape of the existing table instead of asking what the table would contain. The estimate
+that caught it took two minutes and could have been made before writing any of it — the
+same "count first" habit that this repo has now recorded three times, skipped again under
+time pressure.

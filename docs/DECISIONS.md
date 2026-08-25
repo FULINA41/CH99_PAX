@@ -1284,6 +1284,47 @@ other.
 
 **Feeds.** SUBMISSION.md §2
 
+---
+
+## D-0036 — Expand a note's list once per note, not once per provision that cites it
+**Date:** 2026-08-25 · **Area:** schema · **Status:** accepted · extends D-0018
+
+**Context.** The resolver's first version put both paths into `rule_base_match`: the codes
+a provision names, and the codes reached through a note it cites. The run did not finish.
+Measured offline before rewriting:
+
+```
+reach() calls the note path would make : 805,762
+worst notes: note 52 (4,166 codes x 98 citing provisions) = 408,268 calls
+             note  2 (2,322 codes x 150 citing provisions) = 348,300 calls
+average base rows per cited code       : 5.8
+=> estimated rule_base_match rows      : ~4,700,000
+```
+
+Nearly all of those rows are the same expansion written again: note 52's 4,166 codes,
+resolved identically, stored 98 times. This is the product D-0018 refused to materialise
+for country-wide provisions, arriving by a different route.
+
+**Options.**
+- Materialise it — one table, one query for the app, 4.7 million rows of which ~98% are
+  duplicates of each other, and a COPY that dominates the run.
+- Don't materialise the note path at all; prefix-match `note_subheading` at query time —
+  smallest database, and it puts the matching rule back into every consumer, which is what
+  `rule_base_match` exists to prevent.
+- Expand per note into its own table, and let the app join through `rule_note`.
+
+**Decision.** The third. `note_base_match(note_id, base_hts, cited_code, match_kind)` holds
+**79,087 rows** against the 4.7 million; `rule_base_match` keeps the 16,958 direct
+citations and loses its `via` and `note_id` columns, which the split makes redundant. A
+provision's coverage is the union of two queries, written out in `SCHEMA.md`.
+
+**Tradeoff.** The app now needs a UNION where it needed a SELECT, and forgetting the second
+half under-reports coverage — the same hazard as the country path, and now the second time
+this schema has traded a query for a row count. Both are documented in the same place for
+that reason. The alternative was a table 60 times larger whose contents are 98% repetition.
+
+**Feeds.** SUBMISSION.md §2
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

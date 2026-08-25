@@ -28,6 +28,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 DROP TABLE IF EXISTS parse_issue CASCADE;
+DROP TABLE IF EXISTS note_base_match CASCADE;
 DROP TABLE IF EXISTS rule_base_match CASCADE;
 DROP TABLE IF EXISTS note_subheading CASCADE;
 DROP TABLE IF EXISTS rule_note CASCADE;
@@ -338,12 +339,32 @@ CREATE TABLE rule_base_match (
   base_hts   text NOT NULL REFERENCES hts_base(hts) ON DELETE CASCADE,
   cited_code text NOT NULL,
   match_kind text NOT NULL CHECK (match_kind IN ('exact','prefix')),
-  via        text NOT NULL CHECK (via IN ('description','note')),
-  note_id    bigint REFERENCES note(id) ON DELETE SET NULL,
   PRIMARY KEY (rule_hts, base_hts, cited_code)
 );
 
 CREATE INDEX rule_base_match_base_idx ON rule_base_match (base_hts);
+
+
+-- The same expansion for a note's list, stored once per note rather than once per
+-- provision that cites it.
+--
+-- Storing it per provision was measured first and is the wrong shape: note 52 lists 4,166
+-- codes and is cited by 98 provisions, note 2 lists 2,322 and is cited by 150, so the
+-- per-provision table came to roughly 4.7 million rows, nearly all of them the same
+-- expansion written again. Per note it is about 213,000. D-0036.
+--
+-- What a provision reaches is therefore the union of two queries: this table joined
+-- through rule_note, and rule_base_match above. That is the same trade D-0018 made for
+-- country-wide provisions -- a second query in exchange for not materialising a product.
+CREATE TABLE note_base_match (
+  note_id    bigint NOT NULL REFERENCES note(id) ON DELETE CASCADE,
+  base_hts   text   NOT NULL REFERENCES hts_base(hts) ON DELETE CASCADE,
+  cited_code text   NOT NULL,
+  match_kind text   NOT NULL CHECK (match_kind IN ('exact','prefix')),
+  PRIMARY KEY (note_id, base_hts, cited_code)
+);
+
+CREATE INDEX note_base_match_base_idx ON note_base_match (base_hts);
 
 
 -- ===========================================================================
