@@ -170,7 +170,12 @@ hatchet profile add --name chp99 \
 hatchet runs list -p chp99 --since 1h -o json
 ```
 
-There is no test suite, linter, or build step yet. If you add one, add its command here.
+Unit tests over the parsing pure functions -- rates, hierarchy, citations, countries,
+effectivity. No linter or build step yet; if you add one, add its command here.
+
+```bash
+cd workflows && uv run pytest        # 115 tests, no database or network needed
+```
 
 ## Services
 

@@ -43,10 +43,12 @@ CODE = re.compile(r"\d{4}\.\d{2}(?:\.\d{2})?")
 # Read only from a note that says what it applies to and never says what it does not. 107
 # prose notes do both in one body, and a code sitting in running text does not carry which
 # sentence it belonged to; those are left alone rather than guessed at.
-ENUMERATED = re.compile(r"\(\d{1,3}\)\s*(\d{4}\.\d{2}(?:\.\d{2})?(?:\.\d{2})?)")
+# Never a Chapter 99 code: "Heading 9903.91.08 applies to ..." is the note naming the
+# provision it belongs to, not a good that provision covers.
+COVERED = r"(?!99\d{2})(\d{4}\.\d{2}(?:\.\d{2})?(?:\.\d{2})?)"
+ENUMERATED = re.compile(rf"\(\d{{1,3}}\)\s*{COVERED}")
 SCOPED_CODE = re.compile(
-    r"(?:statistical\s+reporting\s+numbers?|(?:\d+-digit\s+)?(?:sub)?headings?)\s+"
-    r"(\d{4}\.\d{2}(?:\.\d{2})?(?:\.\d{2})?)",
+    rf"(?:statistical\s+reporting\s+numbers?|(?:\d+-digit\s+)?(?:sub)?headings?)\s+{COVERED}",
     re.IGNORECASE,
 )
 AFFIRMS = re.compile(r"appl(?:ies|y)\s+to", re.IGNORECASE)

@@ -1,5 +1,5 @@
-from parsing.notes import (NOTE_START, SUBDIVISION_START, _content_kind,
-                           _split_notes, find_codes)
+from parsing.notes import (NOTE_START, SUBDIVISION_START, NotesData, _codes_named_in_prose,
+                           _content_kind, _split_notes, _union_subdivisions, find_codes)
 
 
 def lines(*text):
@@ -82,3 +82,56 @@ def test_the_sequence_runs_past_z_into_doubled_letters():
     from parsing.notes import _letter_index
 
     assert _letter_index("z") < _letter_index("aa") < _letter_index("ww") < _letter_index("aaa")
+
+
+def test_a_note_that_says_only_what_it_covers_gives_up_its_codes():
+    # note 31(i). Without this the provision citing it keeps 'all goods of this country',
+    # and a 100% duty on rubber gloves lands on every import from China.
+    body = ("Heading 9903.91.08 applies to products of China classified in 8-digit "
+            "subheading 4015.12.10, effective January 1, 2026.")
+
+    assert _codes_named_in_prose(body) == ["4015.12.10"]
+
+
+def test_a_note_that_also_says_what_it_excludes_gives_up_nothing():
+    # 107 notes state both directions in one body. A code in running text does not carry
+    # which sentence it belonged to, so reading it could invert the provision.
+    body = ("Heading 9903.88.04 applies to products of China, but shall not apply to "
+            "goods classified in subheading 8471.30.01.")
+
+    assert _codes_named_in_prose(body) == []
+
+
+def test_a_numbered_item_list_inside_a_paragraph_is_read():
+    body = ("Heading 9903.91.06 applies to products of China that are classified in the "
+            "following subheadings: (1) 2504.10.10 (2) 2504.10.50 (3) 2504.90.00")
+
+    assert _codes_named_in_prose(body) == ["2504.10.10", "2504.10.50", "2504.90.00"]
+
+
+def test_a_note_record_inherits_the_codes_of_its_subdivisions():
+    # U.S. note 20's body runs to 912,964 characters, so its code density reads as prose
+    # and it was stored with none -- leaving 38 provisions citing it with nothing to reach.
+    data = NotesData(
+        notes=[{"subchapter": "III", "note_number": "20", "subdivision": None,
+                "content_kind": "prose"}],
+        subheadings=[{"note_key": ("III", "20", "b"), "hts_prefix": "8471.30.01", "ordinal": 0},
+                     {"note_key": ("III", "20", "c"), "hts_prefix": "7208.51.00", "ordinal": 0},
+                     {"note_key": ("III", "20", "c"), "hts_prefix": "8471.30.01", "ordinal": 1}])
+
+    _union_subdivisions(data, "III", "20")
+
+    inherited = [r["hts_prefix"] for r in data.subheadings if r["note_key"] == ("III", "20", None)]
+    assert inherited == ["8471.30.01", "7208.51.00"]
+
+
+def test_a_note_record_that_already_has_codes_is_left_alone():
+    data = NotesData(
+        notes=[{"subchapter": "III", "note_number": "2", "subdivision": None,
+                "content_kind": "subheading_list"}],
+        subheadings=[{"note_key": ("III", "2", None), "hts_prefix": "0101.21.00", "ordinal": 0},
+                     {"note_key": ("III", "2", "c"), "hts_prefix": "7208.51.00", "ordinal": 0}])
+
+    _union_subdivisions(data, "III", "2")
+
+    assert len(data.subheadings) == 2

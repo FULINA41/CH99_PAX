@@ -26,13 +26,20 @@ def test_a_retired_code_reaches_nothing_rather_than_guessing():
 
 
 def test_a_subchapter_citation_is_read_against_the_citing_provision():
-    assert parse_citation("U.S. note 20(b) to this subchapter", "III") == ("III", "20", "b")
+    assert parse_citation("U.S. note 20(b) to this subchapter", "(b)", "III") == ("III", "20", ["b"])
 
 
 def test_a_note_without_a_subdivision_resolves_to_the_note_itself():
-    assert parse_citation("U.S. note 52 to this subchapter", "III") == ("III", "52", None)
+    assert parse_citation("U.S. note 52 to this subchapter", None, "III") == ("III", "52", [])
 
 
 def test_a_chapter_note_is_not_looked_for_in_this_document():
     # 'additional U.S. note 1 to chapter 4' belongs to chapter 4's own notes.
-    assert parse_citation("additional U.S. note 1 to chapter 4", "IV") is None
+    assert parse_citation("additional U.S. note 1 to chapter 4", None, "IV") is None
+
+
+def test_a_nested_path_keeps_every_label_so_the_caller_can_see_the_depth():
+    # Only one level is ever a note row, so 52(j)(7)(iii) resolves no further than 52(j) --
+    # and the caller has to know that to mark the match as a fallback rather than exact.
+    assert parse_citation("subdivision (j)(7)(iii) of U.S. note 52 to this subchapter",
+                          "(j)(7)(iii)", "III") == ("III", "52", ["j", "7", "iii"])

@@ -1,4 +1,5 @@
-from parsing.ch99 import parse_ch99, _countries, _excluded_codes, _scope, _subchapter
+from parsing.ch99 import (parse_ch99, _countries, _excluded_codes, _note_citations,
+                          _scope, _subchapter)
 
 
 def test_the_subchapter_is_the_headings_last_two_digits_in_roman():
@@ -88,3 +89,59 @@ def test_no_additional_duty_is_a_stated_zero_not_an_unreadable_rate(tmp_path):
 
     assert (rule["additional_duty_text"], rule["additional_duty_pct"]) == (
         "No additional duty", 0.0)
+
+
+def test_a_subdivision_named_in_front_is_read_as_a_subdivision():
+    # Reading only the inline 'U.S. note 31(g)' form linked 202 provisions to the parent
+    # note, which holds the union of its subdivisions' lists.
+    assert _note_citations("as provided for in subdivision (g) of U.S. note 31 to this "
+                           "subchapter") == [
+        ("subdivision (g) of U.S. note 31 to this subchapter", "(g)")]
+
+
+def test_one_clause_naming_two_subdivisions_becomes_two_citations():
+    cited = _note_citations("as provided for in subdivisions (d) and (f) of U.S. note 37 "
+                            "to this subchapter")
+
+    assert [path for _, path in cited] == ["(d)", "(f)"]
+
+
+def test_a_nested_subdivision_path_is_kept_whole():
+    assert _note_citations("in subdivision (j)(7)(iii) of U.S. note 52 to this subchapter") == [
+        ("subdivision (j)(7)(iii) of U.S. note 52 to this subchapter", "(j)(7)(iii)")]
+
+
+def test_the_inline_form_records_its_subdivision_the_same_way():
+    assert _note_citations("the subheadings enumerated in U.S. note 20(b) to this "
+                           "subchapter") == [("U.S. note 20(b) to this subchapter", "(b)")]
+
+
+def test_a_country_named_after_a_subject_other_than_articles_is_still_found():
+    # 'Potash that is a product of Canada' -- without this, 9903.01.15 has no country at
+    # all and a China query cannot filter it out.
+    named, _ = _countries("Potash that is a product of Canada, as provided for in U.S. note 2")
+
+    assert named == ["Canada"]
+
+
+def test_a_parenthesis_ends_a_country_name():
+    named, _ = _countries("articles the product of Myanmar (Burma), as provided for in "
+                          "subdivision (v) of U.S. note 2")
+
+    assert named == ["Myanmar"]
+
+
+def test_a_name_outside_ascii_survives_the_capture():
+    named, _ = _countries("articles the product of C\u00f4te d\u2019Ivoire or Namibia, as provided for in")
+
+    assert named == ["C\u00f4te d\u2019Ivoire", "Namibia"]
+
+
+def test_an_area_is_not_taken_for_a_country():
+    # "the product of any country or area including the United States" splits on 'or',
+    # leaving 'area including the United States' looking like a name. It goes to the
+    # generic pile, which is reported as an issue, rather than becoming a country link.
+    named, generic = _countries("all the foregoing the product of any country or area "
+                                "including the United States")
+
+    assert named == []

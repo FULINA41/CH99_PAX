@@ -29,3 +29,9 @@ def test_a_bloc_is_not_given_a_country_code():
 def test_an_unrecognised_name_is_not_a_bloc_and_so_is_reportable():
     assert country_code("Freedonia") is None
     assert not is_not_a_country("Freedonia")
+
+
+def test_the_two_apostrophes_the_schedule_prints_reach_the_same_code():
+    # The schedule prints Cote d'Ivoire with a backtick on one line and a curly quote on
+    # another; ISO carries the straight one. Normalising is the fix, not two aliases.
+    assert country_code("C\u00f4te d`Ivoire") == country_code("C\u00f4te d\u2019Ivoire") == "CI"
