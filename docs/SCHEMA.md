@@ -27,6 +27,11 @@ came from.
    base.json          →    hts_base
 
                            parse_issue  ←──  everything that fit none of the above
+
+        EDITORIAL                  DERIVED FOR THE APP
+   attributable to this file     rebuilt every parse run
+
+   trade_programme               rule_coverage
 ```
 
 Three consequences worth stating up front:
@@ -40,6 +45,10 @@ Three consequences worth stating up front:
   nothing upstream is re-parsed.
 - **`parse_issue` is expected to be non-empty.** An empty one after a full run means the
   parser is not checking, not that the data is clean.
+- **One table holds no source text at all.** `trade_programme` is an attribution this
+  project makes, not a reading of a payload (D-0045), so it sits apart and every surface
+  showing it has to say so. D-0055 records two further tables that were built on the same
+  principle, measured, and removed.
 
 ## 2. Table map
 
@@ -63,6 +72,8 @@ erDiagram
     hts_base        ||--o{ rule_base_match : "reached by"
     note            ||--o{ note_base_match : "expands to"
     hts_base        ||--o{ note_base_match : "reached by"
+
+    rule            ||--o| rule_coverage   : "how much it reaches"
 ```
 
 | Table | Rows | Layer | Holds | Who reads it |
@@ -71,13 +82,15 @@ erDiagram
 | `hts_base` | 26,246 | fact | Chapters 1–97: the codes goods are classified under | Step one of every duty calculation |
 | `rule` | 3,098 | fact | Chapter 99 provisions: what modifies those duties | Step two of every duty calculation |
 | `rule_edge` | 14,229 | fact | The codes a provision names, unresolved | Auditing the matcher; following exclusions |
-| `rule_country` | 401 | fact | The countries a provision names | The moment a user types "China" |
+| `rule_country` | 422 | fact | The countries a provision names | The moment a user types "China" |
 | `rule_identifier` | 1,229 | fact | CAS numbers | Choosing between several provisions on one base code |
-| `note` | ~120 | fact | U.S. notes from the PDF | A user asking "on what authority" |
-| `rule_note` | 926 | fact | A provision citing a note | Jumping from a provision to the legal text |
-| `note_subheading` | thousands | fact | The codes a list-type note prints | Working out what Section 301 covers |
+| `note` | 345 | fact | U.S. notes from the PDF | A user asking "on what authority" |
+| `rule_note` | 977 | fact | A provision citing a note | Jumping from a provision to the legal text |
+| `note_subheading` | 48,053 | fact | The codes a list-type note prints | Working out what Section 301 covers |
 | `rule_base_match` | 16,958 | **interpretation** | The base rows a provision names itself | The main query once a user supplies a code |
-| `note_base_match` | 79,087 | **interpretation** | The base rows a note's list reaches | The other half of that query, joined through `rule_note` |
+| `note_base_match` | 136,325 | **interpretation** | The base rows a note's list reaches | The other half of that query, joined through `rule_note` |
+| `rule_coverage` | 2,825 | derived | How many base codes a provision reaches, by each path | A duty page, which needs it for every provision at once (D-0047) |
+| `trade_programme` | 7 | **editorial** | Which trade action a heading family belongs to | Naming "Section 301" on screen, which the schedule never does (D-0045) |
 | `parse_issue` | non-empty | honesty | Everything that parsed into nothing | Self-review before submission; telling a user "I could not read this one" |
 
 ---
@@ -358,7 +371,7 @@ The only *derived* tables here. Drop both and they rebuild from `rule_edge` and
 There are two because a provision reaches base codes two ways, and the second one
 multiplies. `rule_base_match` holds the codes a provision names itself — **16,958 rows**.
 `note_base_match` holds the codes a *note* lists, expanded once per note rather than once
-per provision that cites it — **79,087 rows**. Storing the note path per provision was
+per provision that cites it — **136,325 rows**. Storing the note path per provision was
 measured first: note 52 lists 4,166 codes and is cited by 98 provisions, note 2 lists 2,322
 and is cited by 150, and the table came to roughly **4.7 million rows**, nearly all of them
 the same expansion written again (D-0036).
@@ -398,13 +411,52 @@ materialised rather than recomputed per query:
 4202         →  108      a 4-digit heading covers a whole product family
 ```
 
-`rule.scope` is corrected here, not in the Chapter 99 parser: **306 provisions** were filed
+`rule.scope` is corrected here, not in the Chapter 99 parser: **343 provisions** were filed
 as `by_country_all_goods` or `unknown` and became `by_code` once their note turned out to
-be a list. The final split is 2,877 / 102 / 119.
+be a list. The final split is 2,914 / 67 / 117.
 
 ---
 
-## 11. `parse_issue` — what did not parse
+## 11. `rule_coverage` and `trade_programme` — derived, and editorial
+
+Two small tables that are not parsed from anything, and are not the same kind of thing.
+
+**`rule_coverage`** is the only figure in this schema precomputed for speed. Counting one
+provision's reach costs 4 ms, which is why D-0044 concluded no table was needed — and a duty
+page never asks for one. A laptop from China matches 88 provisions, and counting all 88 in a
+single query costs **1,568 ms**, more than three quarters of that page's response. Everything
+else on it runs under 6 ms. D-0047 is about the difference between those two measurements.
+
+| Column | Meaning | When it is used |
+| --- | --- | --- |
+| `rule_hts` | The provision | |
+| `base_codes` | The union of both paths — a code reached twice is one code | The "reaches N base codes" line on every provision |
+| `direct_codes` | Reached because the provision named the code itself | Telling a reader which half of the reach they can check in the provision's own text |
+| `note_codes` | Reached through a note's list | The other half, which is only checkable by opening the PDF |
+
+Rebuilt by the `materialize` task at the end of the parse run, in the same pass that writes
+the tables under it, so it cannot describe a set of provisions that no longer exists.
+
+**`trade_programme`** is the one table whose contents are in none of the three sources.
+Measured: of 345 U.S. notes, exactly one names a statute, and it says "section 201" — the
+schedule never writes "Section 301" or "Section 232" anywhere. So `+25%, articles the product
+of China, as provided for in U.S. note 20(b)` tells a novice nothing about what it is, and an
+app built to explain Chapter 99 to a novice cannot say.
+
+| Column | Meaning | When it is used |
+| --- | --- | --- |
+| `heading_prefix` | The 6-digit family, `9903.88` | Joined as `left(rule.hts, 7)` |
+| `label`, `statute`, `agency` | **Editorial.** Not checkable against this database | The chip on a provision, which must carry the word "editorial" |
+| `evidence` | What the parsed rows say | Re-deriving the grouping without trusting it |
+| `reference_url` | A Federal Register **search**, not a document id | A reader who wants the instrument itself |
+
+Seven families are labelled, and only where the provisions state their own subject matter
+*and* the attribution is public record. Families failing either test are absent rather than
+guessed: `9903.89` and `9903.90` have no label. D-0045.
+
+---
+
+## 12. `parse_issue` — what did not parse
 
 | Column | Meaning | When it is used |
 | --- | --- | --- |
@@ -415,13 +467,23 @@ be a list. The final split is 2,877 / 102 / 119.
 | `detail` | The offending fragment, verbatim | The first thing read when fixing the parser |
 | `created_at` | When | |
 
-Expected residue: ~30 rate strings that are English sentences, 50 cited codes that resolve
-to nothing, countries written in forms the pattern does not cover. Recorded rather than
-dropped (D-0017).
+Residue on this release, **848 rows**, and every group is a known limit rather than a
+surprise:
+
+| Stage | Kind | Rows | What it is |
+| --- | --- | ---: | --- |
+| `base` | `unparsed_rate` | 305 | Column 1 or 2 rates written as English sentences |
+| `resolve` | `subdivision_not_segmented` | 277 | A citation named a subdivision the notes parser could not isolate from the PDF (D-0038) |
+| `resolve` | `unresolved_code` | 226 | A cited code matching no row in this revision |
+| `ch99` | `unnamed_country` | 36 | A country written in a form the pattern does not cover |
+| `ch99` | `unparsed_rate` | 3 | Chapter 99 rates that are sentences (D-0022, P-k) |
+| `resolve` | `unresolved_note` | 1 | A note citation matching no note |
+
+Recorded rather than dropped (D-0017).
 
 ---
 
-## 12. A query end to end
+## 13. A query end to end
 
 **"Steel from China, `7208.51.00`, $100,000."**
 
@@ -455,12 +517,12 @@ different. The schema cannot pick one; only knowing the substance can, which is 
 
 ---
 
-## 13. What this schema deliberately cannot answer
+## 14. What this schema deliberately cannot answer
 
 | Question | Why not |
 | --- | --- |
 | Which of §232 and §301 applies first when both hit | **Not stated anywhere in the HTSUS.** CBP publishes it in CSMS messages; guessing would be worse than saying so |
-| Is this provision still in force | The PDF marks expiry by grey shading, which text extraction destroys. The JSON has no date field at all |
+| Is this provision still in force | **Partly answerable.** `effective_from`, `effective_to` and `status` are read from the provision's own prose, which states a date only when it is unusual (D-0043). The PDF's grey shading for an expired row is still destroyed by text extraction |
 | Which countries get the Column 2 rate | In the HTS General Notes, not in any of the three sources |
 | What `A+`, `KR`, `AU` mean in `special_text` | Same |
 | What changed between Revision 15 and 16 | One revision is resident at a time (D-0020). The payloads are kept, so the answer is recoverable by re-parsing — just not queryable |

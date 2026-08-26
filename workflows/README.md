@@ -54,12 +54,14 @@ container your database is `db:5432`, not `localhost:5432` — the service reads
 
 ## What's here
 
-| File          |                                                             |
-| ------------- | ----------------------------------------------------------- |
-| `echo.py`     | A workflow with one task: takes an input, returns an output |
-| `worker.py`   | The worker process. Register your workflows here            |
-| `echo_run.py` | Triggers a run and prints the result                        |
-| `.env`        | Hatchet connection settings. Committed — see below          |
+| File                      |                                                                     |
+| ------------------------- | ------------------------------------------------------------------- |
+| `scrape.py` / `scrape_run.py` | Part 1: fetch the three USITC payloads into `data/`             |
+| `parse.py` / `parse_run.py`   | Part 2: read those payloads and structure them into Postgres    |
+| `parsing/`                | Everything Part 2 does, one module per stage. Pure functions where it can be, so the tests need neither a database nor the network |
+| `worker.py`               | The worker process. Register your workflows here                    |
+| `echo.py` / `echo_run.py` | The scaffold's sample workflow, kept as the smallest thing that works |
+| `.env`                    | Hatchet connection settings. Committed — see below                  |
 
 ## The shape of a workflow
 

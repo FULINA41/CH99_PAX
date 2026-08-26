@@ -171,10 +171,12 @@ hatchet runs list -p chp99 --since 1h -o json
 ```
 
 Unit tests over the parsing pure functions -- rates, hierarchy, citations, countries,
-effectivity. No linter or build step yet; if you add one, add its command here.
+effectivity. No linter and no build step; if you add one, add its command here.
 
 ```bash
 cd workflows && uv run pytest        # 115 tests, no database or network needed
+cd api       && uv run pytest        # 15 tests, same
+docker compose exec -T app npx tsc --noEmit
 ```
 
 ## Services
@@ -195,8 +197,8 @@ database is `db:5432`, not `localhost:5432` — both `worker` and `app` read
 ## Architecture and layout
 
 ```
-workflows/   Hatchet workflows (Python, uv). echo.py + echo_run.py are the sample;
-             worker.py is the worker process. Scraper and parser go here.
+workflows/   Hatchet workflows (Python, uv). scrape.py and parse.py are Parts 1 and 2;
+             parsing/ holds what Part 2 does; worker.py is the worker process.
 db/schema.sql  The single command that builds the schema from empty.
 api/         Part 3 backend: FastAPI, read-only. The duty logic lives here, in
              api/duty/, so page and JSON endpoint are two adapters over one computation.
