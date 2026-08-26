@@ -28,7 +28,13 @@ export function LayerCard({ layer, dimmed = false }: { layer: Layer; dimmed?: bo
       className={`border-t border-rule py-6 scroll-mt-6 ${dimmed ? "opacity-70" : ""}`}
     >
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <span className="font-mono text-lg font-medium text-ink">{layer.hts}</span>
+        <a
+          href={`/rule/${layer.hts}`}
+          className="font-mono text-lg font-medium text-ink underline decoration-rule-strong
+                     underline-offset-4 hover:decoration-ink"
+        >
+          {layer.hts}
+        </a>
         <span className={`font-mono text-lg font-medium tabular ${mark.tone}`}>
           {mark.sign && <span aria-hidden className="mr-1">{mark.sign}</span>}
           {rate(layer.term)}
@@ -120,7 +126,13 @@ export function LayerCard({ layer, dimmed = false }: { layer: Layer; dimmed?: bo
         {layer.excluded_by.length > 0 && (
           <Meta label="Carve-outs">
             {layer.excluded_by.length} headings can remove this duty:{" "}
-            <span className="font-mono text-xs">{layer.excluded_by.slice(0, 6).join(", ")}</span>
+            {layer.excluded_by.slice(0, 6).map((hts, index) => (
+              <span key={hts}>
+                {index > 0 && ", "}
+                <a href={`/rule/${hts}`} className="font-mono text-xs underline
+                   decoration-rule-strong underline-offset-2 hover:decoration-ink">{hts}</a>
+              </span>
+            ))}
             {layer.excluded_by.length > 6 && ` and ${layer.excluded_by.length - 6} more`}
           </Meta>
         )}

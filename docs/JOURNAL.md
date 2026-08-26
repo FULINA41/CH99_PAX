@@ -1375,3 +1375,33 @@ tsc --noEmit                                 clean
 uses `--` for dashes, and shipped it to the page before noticing. Small, but it is the same
 class as the SQL-substring tests: a convention from one context carried into another where it
 is wrong, and only caught by looking at the actual output.
+
+**Step 4 — the citation trail.** `/rule/[hts]` and `/note/[id]`, which turn the evidence on a
+duty card from a claim into something a reader can open. Both endpoints answer in about 12 ms.
+
+The provision page keeps the two directions of an exclusion apart — *this carves out* versus
+*this is carved out by* — because they mean opposite things and a single list of neighbours
+would say neither. It also states, on any provision whose note citation fell back to a parent,
+that what is shown is wider than the provision is; the same sentence appears wherever that
+fact is relevant, from one place in `reference/sources.py`.
+
+The note page is where Chapter 99's strangest fact becomes visible: `9903.91.01` charges 25%
+on "the subheadings enumerated in U.S. note 31(b)", and that list is 349 codes printed in a
+PDF and nowhere else. The page shows the note as printed, its sibling subdivisions with a
+count each, the codes in the order the note prints them, 200 at a time, and every provision
+citing it. Codes that match no row in this revision are marked rather than dropped.
+
+```
+/rule/9903.91.01   200  0.14 s      /note/493          200  0.23 s
+/rule/9903.88.01   200  0.09 s      /note/445?from=200 200  0.09 s
+/rule/9999.99.99   404              /note/999999       404
+tsc --noEmit clean   ·   api tests 15 passed
+```
+
+Every link on a duty page now resolves: the provision codes on each card, the exclusion
+groups, and the note references in the evidence.
+
+**Agent notes.** Two English plurals shipped wrong in one step — "1 trade programme reach this
+code" and "1 provision take their scope" — both from writing `{n} thing{s}` and forgetting the
+verb agrees too. Caught by reading the rendered text, not by types or tests, which is the same
+lesson as the `--` dashes an hour earlier: the only check for prose is looking at it.

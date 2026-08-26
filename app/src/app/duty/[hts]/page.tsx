@@ -203,7 +203,14 @@ export default async function DutyPage(
                   <span className="text-muted">cites no note</span>
                 )}
                 <span className="ml-2 font-mono text-xs text-faint">
-                  {group.provisions.join(" · ")}
+                  {group.provisions.map((hts, index) => (
+                    <span key={hts}>
+                      {index > 0 && " · "}
+                      <a href={`/rule/${hts}`} className="hover:text-ink hover:underline">
+                        {hts}
+                      </a>
+                    </span>
+                  ))}
                 </span>
               </li>
             ))}

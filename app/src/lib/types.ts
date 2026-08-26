@@ -130,3 +130,45 @@ export type Countries = {
   named: { country_code: string; name: string; provisions: number }[];
   all: { country_code: string; name: string; named_by_chapter_99: boolean }[];
 };
+
+export type RuleDetail = {
+  rule: {
+    hts: string; heading: string; subchapter: string; full_description: string;
+    scope: string; rate_text: string | null; rate_kind: string;
+    rate_ad_valorem_pct: string | null; rate_specific_amount: string | null;
+    rate_specific_unit: string | null; additional_duty_text: string | null;
+    effective_from: string | null; effective_to: string | null;
+    status: string; status_note: string | null;
+    base_codes: number | null; direct_codes: number | null; note_codes: number | null;
+    label: string | null; statute: string | null; agency: string | null;
+    evidence: string | null; reference_url: string | null;
+  };
+  cited_codes: { cited_code: string; reaches: number }[];
+  notes: {
+    cited_text: string; cited_subdivision: string | null; match_precision: Precision;
+    note_id: number | null; label: string | null; content_kind: string | null;
+    page_from: number | null; page_to: number | null; listed_codes: number;
+  }[];
+  countries: { country_name: string; country_code: string | null; relation: string }[];
+  identifiers: { kind: string; value: string }[];
+  carves_out: { target_hts: string; source_hts: string; description: string | null; rate_text: string | null }[];
+  carved_out_by: { target_hts: string; source_hts: string; description: string | null; rate_text: string | null }[];
+  sample: { base_hts: string; cited_code: string; match_kind: string; path: string }[];
+};
+
+export type NoteDetail = {
+  note: {
+    id: number; label: string; note_kind: string; subchapter: string | null;
+    note_number: string; subdivision: string | null; body: string;
+    content_kind: string; page_from: number | null; page_to: number | null;
+    listed_codes: number;
+  };
+  codes: { hts_prefix: string; ordinal: number; reaches: number }[];
+  codes_offset: number;
+  family: { id: number; label: string; subdivision: string | null; content_kind: string; listed_codes: number }[];
+  citing: {
+    rule_hts: string; cited_text: string; cited_subdivision: string | null;
+    match_precision: Precision; rate_text: string | null; rate_kind: string;
+    status: string; description: string; programme: string | null;
+  }[];
+};
