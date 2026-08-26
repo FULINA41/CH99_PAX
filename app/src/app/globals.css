@@ -1,0 +1,20 @@
+/* Placeholder. The design lands in Step 3; this only keeps the scaffold legible. */
+:root {
+  --ink: #16181d;
+  --paper: #ffffff;
+  --muted: #5c6370;
+  --rule: #e2e5ea;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 46rem; margin: 4rem auto; padding: 0 1.5rem; }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 0.35rem 0.75rem 0.35rem 0; border-bottom: 1px solid var(--rule); }
+th { color: var(--muted); font-weight: 500; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }

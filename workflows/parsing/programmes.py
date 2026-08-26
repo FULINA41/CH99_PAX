@@ -4,23 +4,6 @@ from parsing.db import connect
 
 STAGE = "materialize"
 
-# The trade action a Chapter 99 heading belongs to, keyed by its 6-digit family.
-#
-# EDITORIAL. This is the one table in the schema whose contents are not in the three
-# sources. Measured: of 345 U.S. notes, exactly one -- note 21 -- names a statute, and it
-# says "section 201". The schedule never writes "Section 301" or "Section 232" anywhere, so
-# a provision reading "+25%, articles the product of China, as provided for in U.S. note
-# 20(b)" tells a novice nothing about what it is or who imposed it.
-#
-# Every row is therefore marked editorial in the table and rendered as such, and every one
-# is admitted on two conditions: the provisions in that family say the subject matter
-# themselves, and the attribution is a matter of public record a reader can check at the
-# cited search. Families where either test fails are simply absent -- 9903.89 covers a
-# 27-country EU list and 9903.90 covers Russia under note 30, and rather than guess at which
-# action either belongs to, the app shows them with no programme label at all. D-0045.
-#
-# `evidence` is what the parsed rows say, and is checkable against this database. `label`,
-# `statute` and `agency` are not.
 PROGRAMMES: tuple[dict[str, str], ...] = (
     {
         "heading_prefix": "9903.01",

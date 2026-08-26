@@ -185,9 +185,10 @@ cd workflows && uv run pytest        # 115 tests, no database or network needed
 | `hatchet` | `localhost:8080` UI, `localhost:7077` gRPC | `hatchet:7077` | Hatchet Lite dev image, no login |
 | `hatchet_db` | — | `hatchet_db:5432` | Hatchet's own DB — never put project data here |
 | `worker` | — | — | profile `worker`, bind-mounts `workflows/` and `data/` |
-| `app` | `localhost:3000` | — | profile `app`, bind-mounts `app/` |
+| `api` | `localhost:8000` | `api:8000` | profile `app`, FastAPI, `/docs` is generated |
+| `app` | `localhost:3000` | — | profile `app`, Next.js, rewrites `/api/*` to `api:8000` |
 
-Stock ports, so free 5432/8080/3000 before starting. From inside a container the
+Stock ports, so free 5432/8080/8000/3000 before starting. From inside a container the
 database is `db:5432`, not `localhost:5432` — both `worker` and `app` read
 `DATABASE_URL` from the environment for this reason.
 
@@ -197,7 +198,10 @@ database is `db:5432`, not `localhost:5432` — both `worker` and `app` read
 workflows/   Hatchet workflows (Python, uv). echo.py + echo_run.py are the sample;
              worker.py is the worker process. Scraper and parser go here.
 db/schema.sql  The single command that builds the schema from empty.
-app/         Part 3 scaffold: one Bun.serve route, one query, no framework.
+api/         Part 3 backend: FastAPI, read-only. The duty logic lives here, in
+             api/duty/, so page and JSON endpoint are two adapters over one computation.
+app/         Part 3 frontend: Next.js App Router, server-rendered. Draws pages; computes
+             nothing. src/lib/api.ts is the only place that knows where the API is.
 data/        Raw downloaded payloads. Gitignored, bind-mounted into the worker at /data
              (env var DATA_DIR), same path on host and container.
 parts/       The three requirement documents.

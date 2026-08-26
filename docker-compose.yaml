@@ -160,34 +160,78 @@ services:
           target: /workflows/pyproject.toml
 
   # ============================================
-  # The Part 3 scaffold, containerized.
+  # The Part 3 API - FastAPI over the parsed
+  # database, read-only.
   #
   #   docker compose --profile app up -d
-  #   → http://localhost:3000
+  #   -> http://localhost:8000/docs
   #
-  # Opt-in, because running it on your host is the
-  # smoother path — bind-mounted node_modules and
-  # file watching are both slower in a container,
-  # especially on macOS. See app/README.md.
-  #
-  # If you replace the scaffold with another stack,
-  # rewrite or delete this service. It is not load-
-  # bearing for anything else in the compose file.
+  # Same uv-in-a-stock-image pattern as the
+  # worker: the venv lives on a named volume so
+  # it survives restarts and stays off the bind
+  # mount.
   # ============================================
-  app:
+  api:
     profiles: ["app"]
-    image: oven/bun:1.3.3-alpine
-    working_dir: /app
-    command: bun dev
+    image: python:3.11-slim
+    working_dir: /api
+    command: >
+      sh -c "pip install --quiet --root-user-action=ignore uv &&
+             uv sync &&
+             uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
-      - "3000:3000"
+      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
     environment:
-      # db:5432 rather than localhost:5432 — we're on the compose network here.
+      # db:5432 rather than localhost:5432 - we're on the compose network here.
       DATABASE_URL: postgres://postgres:postgres@db:5432/chp99
-      PORT: 3000
+      UV_PROJECT_ENVIRONMENT: /venv
+      # The volume and the mount are different filesystems, so hardlinking fails.
+      UV_LINK_MODE: copy
+    volumes:
+      - ./api:/api
+      - api_venv:/venv
+    restart: unless-stopped
+
+  # ============================================
+  # The Part 3 web app - Next.js, server-rendered.
+  #
+  #   docker compose --profile app up -d
+  #   -> http://localhost:3000
+  #
+  # Server Components call the api service over
+  # the compose network; the browser reaches it
+  # through the rewrite in next.config.ts, so
+  # there is no CORS and no API origin in the
+  # bundle.
+  #
+  # Running it on your host is the smoother path -
+  # bind-mounted node_modules and file watching are
+  # both slower in a container, especially on macOS.
+  # See app/README.md.
+  # ============================================
+  app:
+    profiles: ["app"]
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    environment:
+      # Where Server Components fetch from. Not NEXT_PUBLIC_: the browser must never see it,
+      # because api:8000 does not resolve outside the compose network.
+      API_URL: http://api:8000
+      # Nothing about a take-home needs to phone home.
+      NEXT_TELEMETRY_DISABLED: "1"
+      # next dev compiles on demand and that compile is the memory spike in this stack.
+      # Measured on a 2 GB Docker VM: with Postgres, Hatchet, its database and the worker
+      # also up, the app container is OOM-killed mid-compile and prints only "Killed".
+      # Capping the heap makes node collect rather than grow into the ceiling.
+      NODE_OPTIONS: "--max-old-space-size=512"
     volumes:
       - ./app:/app
       # Keeps container deps off the bind mount, so they don't collide with
@@ -213,5 +257,6 @@ volumes:
   postgres_data:
   hatchet_postgres_data:
   hatchet_lite_config:
+  api_venv:
   app_node_modules:
   worker_venv:
