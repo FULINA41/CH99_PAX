@@ -125,6 +125,20 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "url": HTS,
         "what_to_search": "the note number quoted in the provision, then your country",
     },
+    "competing_replacements": {
+        "question": "Two provisions both replace the base rate. Which one is mine?",
+        "why": (
+            "U.S. note 1 to subchapter III says a Chapter 99 rate applies in lieu of the rate "
+            "in chapters 1 to 98 — so two of them cannot both apply, and the schedule does "
+            "not choose. These are usually a tariff-rate quota's in-quota and over-quota "
+            "rates, told apart by how much of the quota has already been filled this year, "
+            "which is not in any of these sources. The lower one is in the figure and the "
+            "rest are in the range."
+        ),
+        "source_name": "the quota status published by CBP",
+        "url": CSMS,
+        "what_to_search": "the heading numbers above, plus 'tariff rate quota'",
+    },
     "scope_widened": {
         "question": "Why does this provision look like it covers so much?",
         "why": (

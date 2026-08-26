@@ -17,10 +17,24 @@ OPERATORS: dict[RateKind, str] = {
     "none": "no_change",
 }
 
+# `rate_kind` reads the rate text; `cumulation` reads the note that governs it. They answer
+# different halves of the same question and the schedule expects both to be read.
+#
+# A rate printed as "The duty provided in the applicable subheading + 7.5%" names the base and
+# is additive whatever any note says -- that is note 1's "unless the context requires
+# otherwise", and 62 provisions are in exactly that position. A rate printed as a bare "10%"
+# is silent about the base, and then the note decides: U.S. note 52(a) says headings
+# 9903.05.20-9903.05.84 "impose ADDITIONAL ad valorem rates of duty" and that products "shall
+# ALSO be subject to the general rates of duty imposed under subheadings in chapters 1 to 97",
+# so that 10% is charged on top rather than instead. Reading the rate text alone made it a
+# replacement and wiped out the base. 18 provisions. D-0058.
+CUMULATIVE_INSTEAD: dict[str, str] = {"replace": "add", "free": "add"}
+
 ASSUMPTION = (
     "Assumes every duty listed applies at once and that none of the exclusions covers your "
-    "goods. Stacking order is set by CBP in its filing instructions, not by the tariff "
-    "schedule, so it is not in this data."
+    "goods. The schedule states how each duty combines with the ordinary rate — that is read "
+    "here — but which 9903 line goes on which entry line is set by CBP in its filing "
+    "instructions, and that is not in this data."
 )
 
 
@@ -32,6 +46,7 @@ def term(
     specific_amount: Decimal | None = None,
     specific_unit: str | None = None,
     is_base: bool = False,
+    cumulation: str = "unstated",
     declared_value_usd: Decimal | None = None,
     quantity: Decimal | None = None,
 ) -> Term:
@@ -46,6 +61,9 @@ def term(
             attached -- 'clean kg' is not 'kg' and a calculator handed the plain unit
             overcharges.
         is_base: True for the base schedule row, which is the rate rather than a change to it.
+        cumulation: What the governing U.S. note says about how this rate combines with the
+            rate in chapters 1 to 98. Promotes a bare rate from a replacement to an addition,
+            and is ignored for a rate that already names the base.
         declared_value_usd: Shipment value, for the ad valorem part.
         quantity: Shipment quantity, for the specific part.
 
@@ -54,6 +72,8 @@ def term(
         particular a specific duty with no quantity, which is an unknown and never a zero.
     """
     operator = "base" if is_base else OPERATORS[kind]
+    if not is_base and cumulation == "cumulative":
+        operator = CUMULATIVE_INSTEAD.get(operator, operator)
 
     money: Decimal | None = None
     if declared_value_usd is not None and ad_valorem_pct is not None:
@@ -86,7 +106,8 @@ def combine(base: Term, layers: list[Layer], *, declared_value_usd: Decimal | No
 
     Args:
         base: The base schedule term.
-        layers: The Chapter 99 provisions in force, in the order they should be read.
+        layers: The Chapter 99 provisions in force. Order does not matter: this sorts them
+            by what each operator acts on, which is what the notes settle.
         declared_value_usd: Shipment value, for the ad valorem total.
 
     Returns:
@@ -100,7 +121,15 @@ def combine(base: Term, layers: list[Layer], *, declared_value_usd: Decimal | No
 
     unknown = base.operator == "unknown"
 
-    for layer in layers:
+    # Ordered by what each operator acts on, not by heading number. U.S. note 1 to subchapter
+    # III says a Chapter 99 rate applies "in lieu of the rate provided therefor in chapters 1
+    # to 98" -- it stands in for the BASE, never for another Chapter 99 duty -- while a
+    # cumulative duty applies "in addition to the duties otherwise imposed", which includes
+    # whatever replaced the base. So replacements resolve first and additions go on top, and
+    # addition commutes so nothing below that depends on order. Iterating in `ORDER BY hts`
+    # let a replacement that happened to sort late wipe out additions already applied: 346 of
+    # 2,160 sampled queries were order-dependent. D-0058.
+    for layer in sorted(layers, key=lambda l: l.term.operator != "replace"):
         item = layer.term
         if item.operator == "no_change":
             continue

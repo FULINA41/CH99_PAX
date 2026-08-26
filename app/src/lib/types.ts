@@ -65,6 +65,7 @@ export type Layer = {
   hts: string;
   description: string;
   origin_scope: "none" | "any" | "named" | "unresolved";
+  cumulation: "in_lieu" | "cumulative" | "unstated";
   conditions: Condition[];
   scope: "by_code" | "by_country_all_goods" | "unknown";
   term: Term;
@@ -117,6 +118,7 @@ export type DutyStack = {
   origin_scoped: Layer[];
   origin_unresolved: Layer[];
   not_eligible: Layer[];
+  competing_replacements: Layer[];
   reductions: Layer[];
   exclusions: { note_label: string | null; note_id: number | null; provisions: string[] }[];
   inactive: Layer[];

@@ -1783,3 +1783,103 @@ on the strength of one sentence in note 52(a), and the complementary heading ref
 same shape as the audit two entries above, where a hypothesis I liked did not survive being
 checked. Third, after adding two new buckets to the API I had to remember to render them;
 shipping data the UI ignores is the exact failure this entry is about.
+
+## 2026-08-26 — The schedule does state the stacking rule, and I had said it did not
+
+P-l was open because `combine` applied provisions in `ORDER BY r.hts` — an incidental sort that
+changed the answer. The user asked the right question: **what do the rules actually say?**
+
+They say a lot, and the assumption line printed on every duty page said the opposite:
+
+> "Stacking order is set by CBP in its filing instructions, not by the tariff schedule, so it
+> is not in this data."
+
+That is wrong about the arithmetic. It is right only about which 9903 line goes on which entry
+line. The schedule settles the arithmetic in three layers, all of them in the payload we
+already had:
+
+```
+U.S. note 1 to subchapter III   "subject to duty at the rate set forth herein IN LIEU OF the
+                                 rate provided therefor in chapters 1 to 98"
+U.S. note 1 to subchapter I     "CUMULATIVE duties which apply IN ADDITION TO the duties, if
+                                 any, otherwise imposed"
+31 notes override note 1        "NOTWITHSTANDING U.S. note 1 to this subchapter ... shall ALSO
+                                 be subject to the general rates of duty imposed under
+                                 subheadings in chapters 1 to 97"
+```
+
+**The order is then derived, not chosen.** Each operator names its own operand: an *in lieu*
+rate stands in for the chapters 1–98 rate — never for another Chapter 99 duty — and a
+cumulative rate applies to "the duties otherwise imposed", which includes it. Replacements
+first, additions on top, and addition commutes. `rule.cumulation` records which a provision is
+(798 cumulative, 619 in lieu, 1,681 unstated), and `combine` sorts by operator.
+
+```
+sampled 2,160 real queries
+  order-dependent before   346
+  order-dependent after      0
+  reported as a range now   45   (two provisions claiming the same base)
+```
+
+**The cross-check found a real defect within minutes of existing, and it was mine.** `rate_kind`
+is read from the rate text; `cumulation` from the note. 80 disagreed.
+
+62 were rates printed as *"The duty provided in the applicable subheading + 25%"* under an
+`in_lieu` default. Not a contradiction — note 1 says "unless the context requires otherwise",
+and a rate naming the base **is** that context. The check was narrowed to ignore them, which is
+itself worth noting: a check that fires on correct rows trains you to ignore it.
+
+The other 18 are bare rates governed by a note that says the duties are cumulative, and they
+were being applied as replacements:
+
+```
+9903.05.39   "10%"            U.S. note 52(a): the heading imposes an ADDITIONAL duty
+9903.02.xx   "15%"      x5    U.S. note 2
+9903.40.05   "25%"      x2    U.S. note 14(a): "cumulative duties which apply in addition to"
+9901.00.50   "14.27c/liter"   U.S. note 1 to subchapter I
+```
+
+**This reverses what I told the user three hours earlier.** Investigating the same provision I
+had suspected `9903.05.39`'s bare `10%` of being misread as `replace`, checked its
+complementary heading, found
+
+```
+9903.05.38  no_change  "The duty provided in the applicable subheading"   column 1 >= 10%
+9903.05.39  replace    "10%"                                             column 1 <  10%
+```
+
+and concluded the parser was right — a "top up to 10%" structure. Read with note 52(a) the same
+pair is "+0% for high-tariff goods, +10% for low-tariff goods", which fits the shape exactly as
+well. **The pair could not settle it; the note could, and I did not go and read the note.** I
+had the right suspicion, checked it against the weaker evidence, and reported the wrong
+conclusion with confidence. Corrected in D-0058, which says so.
+
+**Two provisions in lieu of the same base rate** is the one case the schedule genuinely leaves
+open. `9903.45.01` (14%, in-quota) and `9903.45.02` (30%, over-quota) are a tariff-rate quota's
+two halves, separated by how much has been imported this year. Lowest stays in the figure, the
+rest go to the ceiling with an unknown — D-0049's floor-and-ceiling mechanism, second use.
+
+`rate_kind` was left alone. It is the fact of what the rate text says (D-0015); the operator is
+composed in `duty/compute.py` from both readings. Overwriting the fact layer with the
+interpretation would have made the disagreement unfindable next time.
+
+**Verification.**
+
+```
+setup.sh + parse from empty, twice: identical counts, 15 tables
+cumulation   798 cumulative · 619 in_lieu · 1,681 unstated
+parse_issue  522  (resolve: 277 subdivision_not_segmented, 226 unresolved_code,
+                   18 rate_silent_note_decides, 1 unresolved_note)
+workflows 133 passed (7 new)   api 18 passed (3 new)   tsc --noEmit clean
+
+6109.10.00.12  CN   36.5%  ceiling 61.5%
+6109.10.00.12  DE   16.5%  · 9903.05.39 ruled out by its own condition
+8450.20.00.10  CN   102.5% ceiling 172.5% · 9903.45.01/.02 shown as competing replacements
+7208.51.00.30  CN   25% .. up to 50%   (unchanged)
+```
+
+**Agent notes.** Two corrections in one session, both to claims I had made confidently: the
+"stacking is not in this data" line I had written into `compute.py` and onto every page, and the
+`9903.05.39` operator reading. Both came from stopping at the first piece of evidence that fit.
+The pattern is specific enough to name: **I checked the nearest artifact — a sibling heading, a
+rate string — when the governing document was one query away.**

@@ -209,6 +209,30 @@ CREATE TABLE rule (
   origin_scope text NOT NULL DEFAULT 'none'
     CHECK (origin_scope IN ('none','any','named','unresolved')),
 
+  -- How this provision's rate relates to the rate in chapters 1 to 98, read from the notes
+  -- rather than from the rate text -- and therefore a second, independent reading of what
+  -- rate_kind already claims.
+  --
+  --   'in_lieu'     the Chapter 99 rate stands in for the ordinary one. U.S. note 1 to
+  --                 subchapter III makes this the default: "subject to duty at the rate set
+  --                 forth herein IN LIEU OF the rate provided therefor in chapters 1 to 98"
+  --   'cumulative'  it is charged on top. U.S. note 1 to subchapter I says so for the whole
+  --                 subchapter; 31 notes say it for their own headings, most of them opening
+  --                 "NOTWITHSTANDING U.S. note 1 to this subchapter"
+  --   'unstated'    no note this provision cites says either, and its subchapter has no
+  --                 note 1 in the payload -- subchapter II has no notes at all
+  --
+  -- This is what decides the order the duty engine works in, and the order is derived rather
+  -- than chosen: an 'in_lieu' rate replaces the base because note 1 says it replaces the base,
+  -- and 'cumulative' rates add to "the duties otherwise imposed", which includes it. Addition
+  -- commutes, so nothing below that is order-dependent. D-0058.
+  --
+  -- Written by the resolver, not the Chapter 99 loader: it needs the notes, which a later
+  -- task loads. Where it disagrees with rate_kind, a parse_issue records the disagreement
+  -- rather than one reading quietly winning.
+  cumulation text NOT NULL DEFAULT 'unstated'
+    CHECK (cumulation IN ('in_lieu','cumulative','unstated')),
+
   rate_text            text,
   rate_kind            text NOT NULL
     CHECK (rate_kind IN ('free','replace','additive','no_change','prose','none')),

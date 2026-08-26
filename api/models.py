@@ -114,6 +114,10 @@ class Layer(BaseModel):
     # How the provision limits origin. 'unresolved' means it is bounded by a set this data
     # cannot enumerate, so whether it reaches your shipment is not answerable here. D-0056.
     origin_scope: Literal["none", "any", "named", "unresolved"] = "none"
+    # What the governing U.S. note says about how this rate combines with the ordinary one.
+    # Read from the note, while `term.operator` is read from the rate text -- the two are
+    # separate readings and the engine needs both (D-0058).
+    cumulation: Literal["in_lieu", "cumulative", "unstated"] = "unstated"
     conditions: list[Condition] = Field(default_factory=list)
     # 'by_country_all_goods' is the important one: the provision names the country and limits
     # the goods in prose that could not be turned into codes, so it reaches every import from
@@ -227,6 +231,10 @@ class DutyStack(BaseModel):
     # Ruled out by the provision's own sentence: it states a condition on the base rate and
     # this good fails it. A determination, not an unknown, so it is in neither figure. D-0057.
     not_eligible: list[Layer] = Field(default_factory=list)
+    # More than one provision claims to stand in lieu of the base rate. They cannot both, and
+    # nothing here decides which -- a tariff-rate quota's in-quota and over-quota rates are
+    # told apart by how much has already been imported this year. The total becomes a range.
+    competing_replacements: list[Layer] = Field(default_factory=list)
     reductions: list[Layer] = Field(default_factory=list)
     exclusions: list[ExclusionGroup] = Field(default_factory=list)
     inactive: list[Layer] = Field(default_factory=list)

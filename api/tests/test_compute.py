@@ -63,3 +63,32 @@ def test_a_percent_and_a_per_kilo_rate_are_not_collapsed_into_one_number():
     assert specific == ["$0.154/kg"]
     # The shipment's weight is unknown, so no total can be honest.
     assert money is None
+
+
+def test_a_bare_rate_under_a_cumulative_note_adds_instead_of_replacing():
+    # U.S. note 52(a) says these headings "impose additional ad valorem rates of duty". Read
+    # from the rate text alone, a bare "10%" is a replacement and wipes out the base.
+    item = term(kind="replace", text="10%", ad_valorem_pct=Decimal("10"),
+                cumulation="cumulative")
+
+    assert item.operator == "add"
+
+
+def test_a_bare_rate_under_the_in_lieu_default_still_replaces():
+    item = term(kind="replace", text="10%", ad_valorem_pct=Decimal("10"), cumulation="in_lieu")
+
+    assert item.operator == "replace"
+
+
+def test_a_replacement_resolves_before_additions_whatever_order_it_arrives_in():
+    # U.S. note 1 to subchapter III: a Chapter 99 rate applies "in lieu of the rate provided
+    # therefor in chapters 1 to 98" -- it stands in for the base, never for another Chapter 99
+    # duty. Iterating in heading order let a late replacement wipe out earlier additions.
+    start = base(kind="replace", pct="6.5")
+    add = layer("9903.88.15", kind="additive", pct="5")
+    replace = layer("9903.05.39", kind="replace", pct="20")
+
+    forwards = combine(start, [add, replace])[1]
+    backwards = combine(start, [replace, add])[1]
+
+    assert forwards == backwards == Decimal("25")

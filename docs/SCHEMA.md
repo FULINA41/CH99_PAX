@@ -308,6 +308,29 @@ nothing read. D-0056.
 | `named` | 407 | `rule_country` holds the answer, blocs expanded | Must name the queried country |
 | `unresolved` | 6 | Bounded by a set this data cannot enumerate | Shown, counted only towards the ceiling |
 
+### `rule.cumulation` — how the rate meets the ordinary rate
+
+The schedule states this, and reading it is what settles the order the duty engine works in.
+
+| `cumulation` | Rows | Read from |
+| --- | ---: | --- |
+| `cumulative` | 798 | A note saying the duties are cumulative, most opening *"Notwithstanding U.S. note 1 to this subchapter"* |
+| `in_lieu` | 619 | U.S. note 1 to subchapter III: *"in lieu of the rate provided therefor in chapters 1 to 98"* |
+| `unstated` | 1,681 | No note this provision cites says either, and its subchapter has no note 1 here — subchapter II has no notes at all |
+
+Written by the **resolver**, not the Chapter 99 loader, because it needs the notes a later task
+loads. It is a second, independent reading of what `rate_kind` already claims: `rate_kind` reads
+the rate text, this reads the note governing it. Where a **bare** rate disagrees with its note,
+a `parse_issue` records it — 18 rows, each one a provision that was being applied as a
+replacement while its note said the duty is charged on top. A rate that names the base
+(*"The duty provided in the applicable subheading + 25%"*) is never a disagreement: that is
+note 1's own *"unless the context requires otherwise"*. D-0058.
+
+The order follows from the words rather than from a convention: `in_lieu` stands in for the
+chapters 1–98 rate and never for another Chapter 99 duty; `cumulative` applies to *"the duties
+otherwise imposed"*, which includes it. Replacements resolve first, additions go on top, and
+addition commutes.
+
 The six `unresolved` are *"any country not exempt under U.S. note 41(c)"*, *"identified in
 general note 3(b)"* and *"determined by CBP to have been transshipped"* — each a list living in
 a document none of the three sources contains.

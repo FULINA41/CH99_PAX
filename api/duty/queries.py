@@ -68,6 +68,7 @@ SELECT r.hts, r.description, r.full_description, r.scope,
        r.additional_duty_text, r.additional_duty_pct,
        r.additional_duty_amount, r.additional_duty_unit,
        r.effective_from, r.effective_to, r.status, r.status_note, r.origin_scope,
+       r.cumulation,
        p.heading_prefix, p.label, p.statute, p.agency, p.evidence, p.reference_url
 FROM rule r
 LEFT JOIN trade_programme p ON left(r.hts, 7) = p.heading_prefix

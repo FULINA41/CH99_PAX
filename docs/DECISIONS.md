@@ -2342,22 +2342,102 @@ nothing and fails silent rather than loud, which is the weaker of the two failur
 
 ---
 
+## D-0058 — Read the stacking rule from the notes, because the schedule states it
+
+**Date:** 2026-08-26 · **Area:** parser, app, domain · **Status:** accepted, closes P-l
+
+**Context.** P-l recorded that `combine` applied provisions in `ORDER BY r.hts`, so a total
+could depend on which heading sorted first — `replace → Free` then `+5%` gives 5%, the reverse
+gives Free. Measured over 2,160 sampled queries: **346 were order-dependent**, and a query
+could carry two `replace` provisions where the higher heading silently overwrote the lower.
+
+The assumption line on every page said stacking order "is set by CBP in its filing
+instructions, not by the tariff schedule, so it is not in this data". **That was wrong**, and
+it was wrong in the direction that let the defect stand. The schedule states the rule, in
+three layers:
+
+```
+U.S. note 1 to subchapter III   "any article described in the provisions of this subchapter
+                                 ... is subject to duty at the rate set forth herein IN LIEU
+                                 OF the rate provided therefor in chapters 1 to 98"
+U.S. note 1 to subchapter I     "the duties provided for in this subchapter are CUMULATIVE
+                                 duties which apply IN ADDITION TO the duties, if any,
+                                 otherwise imposed"
+31 notes override the default   note 52(a): "NOTWITHSTANDING U.S. note 1 to this subchapter
+                                 ... shall ALSO be subject to the general rates of duty
+                                 imposed under subheadings in chapters 1 to 97"
+```
+
+**Options.**
+- Define an order, document it as a project convention, move on. Would have produced the
+  right answer for the wrong reason, and left the assumption line lying.
+- Read the notes, derive the order from what they say, and cross-check the rate parser
+  against them.
+
+**Decision.** The second. `rule.cumulation` (`in_lieu` / `cumulative` / `unstated`), written by
+the resolver because it needs the notes a later task loads: the subchapter's note 1 sets a
+default and any note the provision cites overrides it. 798 cumulative, 619 in lieu, 1,681
+unstated — subchapter II has no notes in the payload at all.
+
+**The order then follows rather than being chosen.** Each operator names what it acts on: an
+`in_lieu` rate stands in for *the chapters 1 to 98 rate*, never for another Chapter 99 duty; a
+cumulative rate applies to *"the duties otherwise imposed"*, which includes whatever replaced
+the base. So replacements resolve first and additions go on top — and addition commutes, so
+nothing below that depends on order. `combine` now sorts by operator. **Order-dependent
+queries: 346 → 0.**
+
+**The cross-check found a real defect within minutes of existing.** `rate_kind` is read from
+the rate text and `cumulation` from the note; they are independent readings of the same fact
+and 80 disagreed. 62 were rates printed as *"The duty provided in the applicable subheading +
+25%"* against an `in_lieu` default — not a contradiction but note 1's own *"unless the context
+requires otherwise"*, and the check was narrowed to ignore any rate that names the base. The
+other **18 are bare rates governed by a note that says the duties are cumulative**, and they
+were being applied as replacements:
+
+```
+9903.05.39   "10%"           note 52(a) says the heading imposes an ADDITIONAL duty
+9903.02.xx   "15%"    ×5     U.S. note 2
+9903.40.05   "25%"    ×2     U.S. note 14(a): "cumulative duties which apply in addition to"
+9901.00.50   "14.27c/liter"  U.S. note 1 to subchapter I
+```
+
+This supersedes a reading recorded in JOURNAL earlier the same day, where the complementary
+pair `9903.05.38` (`no_change`, column 1 ≥ 10%) and `9903.05.39` (`10%`, column 1 < 10%) was
+taken as evidence that `replace` was correct. It is not: read with note 52(a), the pair is
+"+0% for high-tariff goods, +10% for low-tariff goods", and the shape is the same either way.
+**The pair could not settle it and the note could.**
+
+`rate_kind` is left alone — it is the fact of what the rate text says (D-0015). The operator is
+composed in `duty/compute.py` from both readings: a rate that names the base is additive
+whatever the note says; a bare rate takes its operator from the note.
+
+**Two provisions in lieu of the same base rate** cannot both apply and the schedule does not
+choose: `9903.45.01` (14%, in-quota) and `9903.45.02` (30%, over-quota) are a tariff-rate
+quota's two halves, told apart by how much has been imported this year. The lowest stays in the
+figure, the rest go to the ceiling with an unknown — the same floor-and-ceiling mechanism
+D-0049 established, second use. 45 of 2,160 sampled queries land here.
+
+**Tradeoff.** `cumulation` is derived from the notes a provision *cites*, so a provision citing
+no note falls back to its subchapter default — right for subchapter III, and `unstated` for the
+1,681 with no note 1 in the payload, where the operator is left to the rate text alone. The
+regexes read four phrasings; a fifth in the next revision reads as `unstated` and fails silent.
+And the "lowest replacement stays" rule is a floor convention, not a finding: the schedule says
+one of them applies, not that it is the cheaper one.
+
+**Feeds.** SUBMISSION.md §2, §3, §5
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
 numbered entry above once decided — do not decide them here.
 
-- **P-l · Stacking order between a replacement and an additional duty.** `combine` applies
-  layers in the order `APPLICABLE` returns them, which is `ORDER BY r.hts` — so a total can
-  depend on which provision has the lower heading number. Measured over 2,160 sampled
-  queries: 531 carry a `replace`, and **346 carry a `replace` and an `add` together**. Worse,
-  a query can carry two `replace` provisions — `9903.45.01` (14%, in-quota) and `9903.45.02`
-  (30%, over-quota) both reach `8450.20.00.10`, and the higher heading silently wins. The
-  HTSUS does not state stacking order (that is already the `stacking` unknown), and D-0057
-  shows the schedule sometimes prevents the question instead by making provisions mutually
-  exclusive on a condition. Decide between defining an order and documenting it, or reporting
-  a range with an unknown as D-0049 does for origin-scoped provisions. **Until decided, the
-  totals on affected queries are order-dependent and that is not disclosed on screen.**
+- ~~**P-l · Stacking order between a replacement and an additional duty.**~~ Settled by
+  **D-0058**: the schedule states the rule in U.S. note 1 to each subchapter and in 31 notes
+  that override it, so the order is derived rather than chosen. `rule.cumulation` records it,
+  `combine` sorts by operator, and order-dependent queries went 346 → 0. Two provisions
+  claiming the same base still cannot both apply, and those report a range.
 
 - ~~**P-g · Part 3 is intended to be an agent.**~~ Settled by **D-0053**: it is a document.
   The two uses of a model are both paraphrase shown beside the text they paraphrase, and

@@ -95,6 +95,8 @@ def resolve_citations(input: ParseInput, ctx: Context) -> dict[str, Any]:
 
     ctx.log(f"rule_base_match {written['rule_matches']:,} rows, note_base_match "
             f"{written['note_matches']:,} rows, {written['rescoped']:,} provisions rescoped")
+    ctx.log("cumulation " + "  ".join(f"{n:,} {name}" for name, n
+                                      in sorted(written['cumulation'].items())))
     return written
 
 

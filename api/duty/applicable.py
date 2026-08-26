@@ -78,8 +78,10 @@ def applicable(
             origin_scope=row["origin_scope"],
             conditions=conditions.get(row["hts"], []),
             scope=row["scope"],
+            cumulation=row["cumulation"],
             term=term(
                 kind=row["rate_kind"],
+                cumulation=row["cumulation"],
                 text=row["rate_text"],
                 ad_valorem_pct=row["rate_ad_valorem_pct"],
                 specific_amount=row["rate_specific_amount"],

@@ -131,6 +131,13 @@ export function LayerCard({ layer, dimmed = false }: { layer: Layer; dimmed?: bo
             <span className="font-mono">{layer.cas_numbers.join(", ")}</span>
           </Meta>
         )}
+        {layer.cumulation !== "unstated" && (
+          <Meta label="Combines">
+            {layer.cumulation === "cumulative"
+              ? "on top of the ordinary rate — the governing U.S. note says so"
+              : "in lieu of the ordinary rate — U.S. note 1 to this subchapter"}
+          </Meta>
+        )}
         {layer.coverage !== null && (
           <Meta label="Reaches">
             {layer.coverage.toLocaleString()} base codes

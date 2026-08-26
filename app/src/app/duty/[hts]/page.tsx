@@ -195,6 +195,19 @@ export default async function DutyPage(
         </Section>
       )}
 
+      {stack.competing_replacements.length > 0 && (
+        <Section
+          id="competing" title="More than one provision stands in lieu of the base rate"
+          blurb="Counted only towards the upper figure. U.S. note 1 to subchapter III says a
+                 Chapter 99 rate applies in lieu of the rate in chapters 1 to 98, so two of
+                 them cannot both apply — and the schedule does not choose. These are usually
+                 a quota's in-quota and over-quota rates, told apart by how much of the quota
+                 has been filled this year."
+        >
+          {stack.competing_replacements.map((layer: Layer) => <LayerCard key={layer.hts} layer={layer} />)}
+        </Section>
+      )}
+
       {stack.not_eligible.length > 0 && (
         <Section
           id="not-eligible" title="Ruled out by their own wording"

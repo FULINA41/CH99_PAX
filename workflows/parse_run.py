@@ -60,6 +60,8 @@ def _report(summary: dict) -> None:
     print(f"          {rs['note_matches']:>7,} note -> base matches (a note's list, once per note)")
     print(f"          {rs['notes_linked']:>7,} citations linked to a note")
     print(f"          {rs['rescoped']:>7,} provisions rescoped once their note was read")
+    print("          cumulation " +
+          "  ".join(f"{n:,} {name}" for name, n in sorted(rs["cumulation"].items())))
     print("          scope now  " +
           "  ".join(f"{n:,} {name}" for name, n in sorted(rs["scopes"].items())))
     print(f"          {rs['issues']:>7,} parse_issue rows")

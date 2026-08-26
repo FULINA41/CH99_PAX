@@ -106,7 +106,8 @@ Three honesty constraints the formula is not allowed to break:
 - **A total may be an expression rather than a number.** `25% + 46.3¢/kg` is written as
   that. Percentages and per-unit duties are never collapsed into one figure.
 - **The assumption sits beside the equals sign**, not in a footer, and it says *maximum
-  exposure*, never *what you owe*.
+  exposure*, never *what you owe*. It no longer claims the schedule is silent on stacking:
+  it is not, and §6 says what it does state.
 - **Expired, not-yet-effective and non-computable terms are not in the formula.** They are
   below it with their dates.
 
@@ -153,7 +154,42 @@ and says which provisions the gap is made of:
 7208.51.00.30 from Germany   Free              (nothing origin-scoped, so no range)
 ```
 
-## 6. What is precomputed, and how it is kept true
+## 6. The order the duties are applied in
+
+The schedule states this, in three layers, and the app reads it rather than picking a
+convention:
+
+```
+U.S. note 1 to subchapter III   a Chapter 99 rate applies "IN LIEU OF the rate provided
+                                therefor in chapters 1 to 98"           -> the default
+U.S. note 1 to subchapter I     "CUMULATIVE duties which apply IN ADDITION TO the duties,
+                                if any, otherwise imposed"
+31 notes override the default   "NOTWITHSTANDING U.S. note 1 to this subchapter ... shall
+                                ALSO be subject to the general rates of duty imposed under
+                                subheadings in chapters 1 to 97"
+```
+
+Each operator names what it acts on, so the order is derived: an *in lieu* rate stands in for
+the **base**, never for another Chapter 99 duty; a cumulative rate applies to *"the duties
+otherwise imposed"*, which includes whatever replaced the base. Replacements resolve first,
+additions go on top, and addition commutes — so nothing below that depends on order.
+
+This was measured, not assumed. Applying provisions in heading order left **346 of 2,160
+sampled queries order-dependent**; sorting by operator leaves **none**.
+
+Two consequences worth stating:
+
+- **`rate_kind` and `cumulation` are two readings of the same fact**, one from the rate text
+  and one from the note that governs it, and the engine composes the operator from both. 18
+  provisions print a bare rate — `9903.05.39`'s `10%` — that reads as a replacement and is
+  charged on top, because U.S. note 52(a) says the heading imposes an *additional* duty. Read
+  from the rate alone, that 10% replaced a 16.5% base.
+- **Two provisions cannot both stand in lieu of the same base rate.** `9903.45.01` (14%,
+  in-quota) and `9903.45.02` (30%, over-quota) are a tariff-rate quota's two halves, told apart
+  by how much has been imported this year — which is in no source here. The lowest stays in the
+  figure, the rest go to the ceiling with an unknown (D-0058).
+
+## 7. What is precomputed, and how it is kept true
 
 The brief asks what is worth storing. The answer here is **one thing**, and it was chosen by
 measuring the query the application actually runs.
@@ -182,7 +218,7 @@ describe a set of provisions that no longer exists. And because a new table with
 key into `rule` makes the parser's `TRUNCATE` fail loudly, a derived table that someone
 forgets to register cannot silently survive a run (D-0025 — it has now caught two).
 
-## 7. What the app refuses to answer
+## 8. What the app refuses to answer
 
 Every duty page ends with **"What this can't tell you"**, listing only the entries this
 query actually raised. Each says why these sources cannot settle it and names somewhere that
@@ -205,7 +241,7 @@ them**: the seven trade-programme names (D-0045 — the schedule never writes "S
 and the four Column 2 countries (D-0026 — without it a Russian query reports Free, which is
 wrong).
 
-## 8. Running it
+## 9. Running it
 
 ```bash
 ./dev.sh                  # whole stack, foreground → :3000, :8000/docs
@@ -225,7 +261,7 @@ the API's address; `next.config.mjs` rewrites `/api/*` for anyone who wants the 
 The app needs Part 2 to have run. Against an empty database it renders and reports nothing
 found, rather than failing.
 
-## 9. Verification
+## 10. Verification
 
 | Check | Result |
 | --- | --- |
@@ -234,7 +270,8 @@ found, rather than failing.
 | The control group is empty | Same steel code from Germany: no Chapter 99 layer, formula degrades to `Free = Free`, two unknowns raised rather than eight |
 | Compound units do not collapse | A code with a `¢/kg` component and no quantity reports the specific term uncomputed, not zero |
 | Coverage is fast | Duty page 70 ms after materialising, from 2,034 ms |
-| Tests | 126 in `workflows`, 15 in `api`, neither needing a database or the network; `tsc --noEmit` clean |
+| No total depends on heading order | 2,160 sampled queries swept: 346 order-dependent before, 0 after |
+| Tests | 133 in `workflows`, 18 in `api`, neither needing a database or the network; `tsc --noEmit` clean |
 | Zero client JavaScript for interaction | Disclosure, filtering and navigation are `<details>`, `<select>` and GET forms |
 
 **Nothing on any of these screens was written by a language model.** A machine-written
@@ -242,7 +279,7 @@ layer — a paraphrase of each provision and a label on each prose note — was 
 and removed: it restated what the formula strip and the evidence lines had already said.
 D-0055 records what it cost and what was learned; `JOURNAL.md` has the measurements.
 
-## 10. What it deliberately does not do
+## 11. What it deliberately does not do
 
 - **No natural-language question answering.** Text-to-SQL over this schema demos well and is
   the highest-risk thing that could be built on it. Recorded as future work instead.

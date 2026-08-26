@@ -94,9 +94,19 @@ def explain(
     layers = [layer for layer in rest
               if layer not in origin_scoped and layer not in origin_unresolved]
 
+    # Two provisions both standing in lieu of the base rate cannot both apply, and the
+    # schedule does not choose between them -- 9903.45.01 and 9903.45.02 are a tariff-rate
+    # quota's in-quota 14% and over-quota 30%, told apart by how much has been imported this
+    # year. Keep the lowest in the figure and put the rest in the range. D-0058.
+    replacements = [layer for layer in layers if layer.term.operator == "replace"]
+    competing: list[Layer] = []
+    if len(replacements) > 1:
+        competing = sorted(replacements, key=_ceiling_of)[1:]
+        layers = [layer for layer in layers if layer not in competing]
+
     expression, percent, specific, money = combine(
         base.term, layers, declared_value_usd=declared_value_usd)
-    maybe = origin_scoped + origin_unresolved
+    maybe = origin_scoped + origin_unresolved + competing
     ceiling = combine(base.term, layers + maybe,
                       declared_value_usd=declared_value_usd) if maybe else None
 
@@ -117,6 +127,7 @@ def explain(
         origin_scoped=origin_scoped,
         origin_unresolved=origin_unresolved,
         not_eligible=not_eligible,
+        competing_replacements=competing,
         reductions=reductions,
         exclusions=_group_exclusions(exclusions),
         inactive=inactive,
@@ -128,8 +139,8 @@ def explain(
             ceiling_amount_usd=ceiling[3] if ceiling else None,
             ceiling_note=CEILING if ceiling else None,
         ),
-        unknowns=_unknowns(base, layers, origin_scoped, origin_unresolved, reductions,
-                           exclusions, inactive, country_code, hts),
+        unknowns=_unknowns(base, layers, origin_scoped, origin_unresolved, competing,
+                           reductions, exclusions, inactive, country_code, hts),
     )
 
 
@@ -183,8 +194,12 @@ def _group_exclusions(exclusions: list[Layer]) -> list[ExclusionGroup]:
             for (note_id, label), provisions in sorted(grouped.items(), key=lambda kv: kv[0][1] or "")]
 
 
-def _unknowns(base, layers, origin_scoped, origin_unresolved, reductions, exclusions,
-              inactive, country_code, hts) -> list[Unknown]:
+def _ceiling_of(layer: Layer) -> Decimal:
+    return layer.term.ad_valorem_pct if layer.term.ad_valorem_pct is not None else Decimal(0)
+
+
+def _unknowns(base, layers, origin_scoped, origin_unresolved, competing, reductions,
+              exclusions, inactive, country_code, hts) -> list[Unknown]:
     # Only what this query actually raised. Listing all nine every time would train a reader
     # to skip the panel, and the one that matters here would go with it.
     keys: list[str] = ["classification"]
@@ -194,6 +209,8 @@ def _unknowns(base, layers, origin_scoped, origin_unresolved, reductions, exclus
         keys.append("origin_scoped")
     if origin_unresolved:
         keys.append("origin_unresolved")
+    if competing:
+        keys.append("competing_replacements")
     if exclusions:
         keys.append("exclusion")
     if len(reductions) > 1:
@@ -218,6 +235,7 @@ def _unknowns(base, layers, origin_scoped, origin_unresolved, reductions, exclus
         "classification": [hts],
         "origin_scoped": [layer.hts for layer in origin_scoped],
         "origin_unresolved": [layer.hts for layer in origin_unresolved],
+        "competing_replacements": [layer.hts for layer in competing],
         "scope_widened": [layer.hts for layer in layers
                           if any(e.note_precision == "parent_fallback" for e in layer.evidence)],
     }

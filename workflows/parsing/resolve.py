@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from parsing.db import connect
+from parsing.cumulation import DISAGREEMENT, disagrees, states_cumulation
 from parsing.issues import Issue, insert_issues
 
 STAGE = "resolve"
@@ -156,6 +157,7 @@ def resolve(*, run_id: str | None, dsn: str | None = None) -> dict[str, Any]:
                 OR EXISTS (SELECT 1 FROM rule_note n JOIN note_base_match nm
                            ON nm.note_id = n.note_id WHERE n.rule_hts = rule.hts))""")
         rescoped = cursor.rowcount
+        cumulation = _read_cumulation(cursor, result)
 
         insert_issues(cursor, run_id, result.issues)
         cursor.execute("SELECT scope, count(*) FROM rule GROUP BY 1")
@@ -173,8 +175,56 @@ def resolve(*, run_id: str | None, dsn: str | None = None) -> dict[str, Any]:
         "note_matches_delegated": result.delegated,
         "rescoped": rescoped,
         "scopes": scopes,
+        "cumulation": cumulation,
         "issues": len(result.issues),
     }
+
+
+# The subchapter default, and then the notes a provision actually cites. A note that states
+# nothing leaves the default standing, which is why the fallback is read first and overwritten
+# rather than consulted last.
+SUBCHAPTER_NOTES = """
+SELECT subchapter, body FROM note
+WHERE note_kind = 'us_note' AND note_number = '1' AND subdivision IS NULL
+  AND subchapter IS NOT NULL
+"""
+
+CITED_NOTE_BODIES = """
+SELECT rn.rule_hts, n.body
+FROM rule_note rn JOIN note n ON n.id = rn.note_id
+"""
+
+
+def _read_cumulation(cursor, result: Resolution) -> dict[str, int]:
+    cursor.execute(SUBCHAPTER_NOTES)
+    default = {row[0]: states_cumulation(row[1]) for row in cursor.fetchall()}
+
+    cursor.execute("SELECT hts, subchapter, rate_kind, rate_text FROM rule")
+    rules = cursor.fetchall()
+
+    cursor.execute(CITED_NOTE_BODIES)
+    stated: dict[str, str] = {}
+    for rule_hts, body in cursor.fetchall():
+        found = states_cumulation(body)
+        # A cited note that displaces note 1 beats one that merely restates it, whichever
+        # order the citations came back in.
+        if found == "cumulative" or (found and rule_hts not in stated):
+            stated[rule_hts] = found
+
+    updates: list[tuple[str, str]] = []
+    for hts, subchapter, rate_kind, rate_text in rules:
+        value = stated.get(hts) or default.get(subchapter) or "unstated"
+        updates.append((value, hts))
+        if disagrees(value, rate_kind, rate_text):
+            result.issues.append(Issue(
+                STAGE, "rate_silent_note_decides", hts,
+                DISAGREEMENT.format(cumulation=value, rate_kind=rate_kind,
+                                    rate_text=rate_text)))
+
+    cursor.executemany("UPDATE rule SET cumulation = %s WHERE hts = %s", updates)
+
+    cursor.execute("SELECT cumulation, count(*) FROM rule GROUP BY 1")
+    return dict(cursor.fetchall())
 
 
 def _copy(cursor, table: str, owner: str, rows: list[tuple]) -> None:
