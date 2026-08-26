@@ -1070,3 +1070,112 @@ shape of the existing table instead of asking what the table would contain. The 
 that caught it took two minutes and could have been made before writing any of it — the
 same "count first" habit that this repo has now recorded three times, skipped again under
 time pressure.
+
+## 2026-08-25 — Part 3 design, and three parser defects it uncovered
+
+Started on Part 3. Spent the session clarifying scope with the user and then, while sizing
+one UI decision, found that Part 2 was reporting duties that do not apply.
+
+**How it surfaced.** The Part 3 duty page was going to show the applicable provisions as a
+one-line formula, `base + ch99 = final`. To know whether a single line was enough I counted
+the terms for the flagship query — `7208.51.00.30`, hot-rolled steel, from China — and got
+**14 additive provisions**, including `9903.91.01 +25%`, `.02 +50%` and `.03 +100%`. Three
+mutually exclusive rates, same goods, same day. The layout question was answered by finding
+out the number was wrong.
+
+**What was wrong.** Three separate defects, each measured before being fixed:
+
+1. `subdivision (g) of U.S. note 31` was not read as a subdivision citation — only the
+   inline `U.S. note 31(g)` form was. 202 provisions linked to the parent note, which holds
+   the union of its subdivisions' lists. `9903.91.06` cites a note about graphite and
+   magnets and was reaching steel. → D-0037
+2. The notes PDF segmenter loses note 2's subdivisions past `(c)` (label sequence jumps
+   `(c)` → `(j)`, past `MAX_GAP`) and mis-accepts a three-levels-down `(d)` as top-level.
+   Not fixed — the outline has three levels with reused labels and pypdf reports leading
+   whitespace 0 on every line, so there is nothing to reconstruct it from. Recorded in a
+   column instead. → D-0038
+3. Notes that name their codes in running prose (`classified in 8-digit subheading
+   4015.12.10`) yielded no codes, so provisions citing them stayed `by_country_all_goods`.
+   `9903.91.08` is a 100% duty on rubber gloves and was landing on every Chinese import.
+   → D-0039
+
+**Verified.**
+
+```
+additive layers on 7208.51.00.30 from China   14  ->  3
+  the one matching by code does so via note 31(b), which is the steel list
+no_change exclusion provisions on that query  61  ->  58
+resolve/unresolved_note issues                62  ->  1
+citations linked to a note                   738  ->  850
+rule_note.match_precision   exact 573 · parent_fallback 277 · chapter_note 126 · unresolved 1
+note content_kind           mixed 23 -> 63, prose 288 -> 248
+parse_issue                609 -> 825  (211 of the increase is the new
+                                        subdivision_not_segmented, which is the point)
+```
+
+Ran the parser twice with no code change between: every table identical, including
+`parse_issue` at 825. Idempotency holds.
+
+**Then three more, found the same way.** Asked whether an LLM should read the prose notes.
+Partitioning the 164 still-blocked provisions by what would actually unblock each one turned
+the question from "should we" into "not yet, and not for most of them":
+
+```
+44  parent note whose subdivisions already carry codes    deterministic  -> D-0040
+54  note that points at another note                      deterministic  -> D-0041
+48  note stating both what it does and does not cover     the real LLM case, deferred
+27  note naming no code at all -- a quota trigger price, a definition, an ad valorem
+    equivalence formula. Nothing to extract, by any method.
+```
+
+D-0041 turned on one measurement: the notes point at each other 224 times, and the two
+directions are separable by wording — `subheadings enumerated in` (70, coverage) versus
+`and provided for in` (154, an exclusion). Following both would have filed every USTR
+exclusion list as the scope of the duty it exempts goods from.
+
+A control query then caught a fourth defect that had nothing to do with notes: laptops from
+China returned Canada's and Myanmar's provisions, because those rows have no `rule_country`
+at all and a country filter cannot see what is not there. → D-0042
+
+**Verified, cumulative over the session.**
+
+```
+additive layers, 7208.51.00.30 steel + China    14  ->  2
+no_change exclusions on that query               61  ->  20
+additive layers, 8471.30.01.00 laptop + China    14  ->  8   (survivors all name China,
+                                                              or are the IEEPA universal
+                                                              baseline, which does apply)
+note_subheading                              36,764  ->  48,170
+note_base_match                              79,087  ->  136,325
+citations linked to a note                      738  ->  850
+provisions rescoped to by_code                  306  ->  343
+scope by_country_all_goods                      341  ->  67
+rule_country links                              397  ->  422
+country names that would not resolve             11  ->  0  (only 'European Union' left,
+                                                              correctly not a country)
+resolve/unresolved_note                          62  ->  1
+parse_issue                                     609  ->  848
+```
+
+Parser run twice with no code change between: all eleven tables identical, `parse_issue`
+848 both times.
+
+**Agent notes.** Three things worth recording.
+
+The defect was found by *designing the UI*, not by testing the parser. Part 2's own
+verification asked "did every provision get a note link" and got yes; it never asked "is
+this the right note", because nothing downstream had yet tried to use the answer for
+anything. A count of duty layers on one real query found in two minutes what a full
+verification pass had missed.
+
+I also over-estimated defect 3 before measuring it. The plan recorded "103 notes / 374
+citations" from a wide `body ~ code-pattern` probe; the real figure once the extraction rule
+was written was 13 notes and 548 codes. Wrote the wide number into the plan as if it were
+the measurement. Corrected in the report to the user before any code was written against it.
+
+The user asked whether an LLM should handle the prose notes, and the useful move was not to
+answer yes or no but to partition the 164 blocked provisions by what would unblock each. Two
+groups were deterministic and larger than the LLM's; one group was unreachable by any
+method. The LLM's genuine share is 48 provisions across 34 notes — real, but fourth in line,
+and invisible until the partition existed. Scope questions phrased as tool questions are
+worth re-asking as measurement questions.

@@ -300,12 +300,38 @@ CREATE TABLE note (
 -- A provision citing a note. cited_text is what the description said; note_id is
 -- what it was matched to, and stays NULL when no note matched — an unresolved
 -- citation keeps its text here and gets a parse_issue row, rather than vanishing.
+--
+-- A citation can name a subdivision two ways, and both have to be read: inline, as
+-- 'U.S. note 20(b)', and in front, as 'subdivision (g) of U.S. note 31'. Reading only the
+-- first form linked 202 provisions to the parent note instead of the subdivision they
+-- named, and a parent carries the union of its subdivisions' code lists — 9903.91.06 cites
+-- note 31(g), whose list is graphite and magnets, but inherited note 31's 412 codes and so
+-- reached steel. D-0037.
+--
+-- One row per subdivision named: 'subdivisions (d) and (f) of U.S. note 37' is two
+-- citations sharing one cited_text, which is why the unique key includes the subdivision.
 CREATE TABLE rule_note (
   id         bigserial PRIMARY KEY,
   rule_hts   text NOT NULL REFERENCES rule(hts) ON DELETE CASCADE,
   cited_text text NOT NULL,
+  -- The path as printed — '(b)', '(j)(7)(iii)' — not resolved. NULL when the citation
+  -- names a note and no subdivision at all.
+  cited_subdivision text,
   note_id    bigint REFERENCES note(id) ON DELETE SET NULL,
-  UNIQUE (rule_hts, cited_text)
+  -- How good the link is, because it is not always exact and the app must not present a
+  -- fallback as if it were:
+  --   'exact'            note_id is the note the citation named
+  --   'parent_fallback'  note_id is an ancestor of it, so the coverage below is WIDER than
+  --                      the provision's real scope. 147 provisions land here, nearly all
+  --                      citing subdivisions of note 2 that the PDF segmenter cannot
+  --                      isolate — see D-0038 for why that is not fixed rather than hidden.
+  --   'chapter_note'     the citation names a note in another chapter's document, which
+  --                      this PDF does not contain. Not a failure, and kept apart from one
+  --                      so an empty note_id can be explained rather than apologised for.
+  --   'unresolved'       nothing matched; note_id is NULL and a parse_issue says so
+  match_precision text NOT NULL DEFAULT 'unresolved'
+    CHECK (match_precision IN ('exact','parent_fallback','chapter_note','unresolved')),
+  UNIQUE NULLS NOT DISTINCT (rule_hts, cited_text, cited_subdivision)
 );
 
 CREATE INDEX rule_note_note_idx ON rule_note (note_id);

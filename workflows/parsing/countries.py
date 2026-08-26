@@ -32,7 +32,10 @@ def country_code(name: str) -> str | None:
         The alpha-2 code, or None if the name is not a country (``European Union``) or is
         not in the register under any of its ISO names.
     """
-    cleaned = name.strip()
+    # The schedule prints the apostrophe in "Cote d'Ivoire" as a backtick on one line and a
+    # curly quote on another; ISO carries the straight one. Normalising the punctuation is
+    # the fix, not two more aliases -- an alias would say these are different names.
+    cleaned = name.strip().replace("\u2019", "'").replace("`", "'").replace("\u2018", "'")
     for field in ("name", "common_name", "official_name"):
         found = pycountry.countries.get(**{field: cleaned})
         if found:

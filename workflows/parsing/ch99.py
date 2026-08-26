@@ -28,15 +28,30 @@ EXCEPT_CLAUSE = re.compile(
     re.IGNORECASE,
 )
 
+# Three things this has to survive, all of them found by querying for provisions that name
+# a country in their prose and have no rule_country row -- 21 of them did. D-0042.
+#
+#   'Potash that is a product of Canada'    the subject is not always the word 'articles'
+#   'Myanmar (Burma)'                       a parenthesis ends the name
+#   'Cote d`Ivoire', 'Cote d'Ivoire'        the name is not ASCII, and the apostrophe is
+#                                           printed as a backtick on one line and a curly
+#                                           quote on another
+#
+# A China query returning Myanmar's rate is the failure this prevents, so the name class is
+# widened and the terminators carry the weight: the capture is lazy and stops at the first
+# punctuation or clause word, rather than trying to enumerate what a country name may hold.
 COUNTRY = re.compile(
-    r"\b(?:articles?|products?|goods)\s+(?:that are\s+)?the products?\s+of\s+"
-    r"([A-Z][A-Za-z'\- ]*?)"
-    r"(?=\s*(?:,|\.|;|:|$|\bas\b|\bthat\b|\bentered\b|\bwhich\b|\bprovided\b|\bunder\b))",
+    r"\b(?:articles?|products?|goods|[^\W\d_]+)\s+(?:that\s+(?:are|is)\s+)?"
+    r"(?:the|a)\s+products?\s+of\s+"
+    r"([^\W\d_][^,.;:()\[\]]*?)"
+    r"(?=\s*(?:[,.;:()]|$|\bas\b|\bthat\b|\bentered\b|\bwhich\b|\bprovided\b"
+    r"|\bunder\b|\bwith\b|\bclassified\b))",
     re.IGNORECASE,
 )
-# 'any country', 'a member state of the European Union' -- the provision does key on
-# origin, but not on a country this row can name.
-GENERIC_COUNTRY = re.compile(r"^(?:any\b|a member state\b)", re.IGNORECASE)
+# 'any country', 'a member state of the European Union', and -- from "the product of any
+# country or area including the United States", where the list splits on 'or' -- 'area'.
+# The provision does key on origin, but not on a country this row can name.
+GENERIC_COUNTRY = re.compile(r"^(?:any\b|a member state\b|area\b)", re.IGNORECASE)
 
 # 'of the United Kingdom' comes from "the product of Germany or of the United Kingdom":
 # splitting the list leaves the preposition attached to the second name.
@@ -65,11 +80,23 @@ COMPOUND_NAMES = frozenset(name.lower() for name in (
     "Wallis and Futuna",
 ))
 
+# A subdivision is named two ways and both have to be read. Inline -- 'U.S. note 20(b)' --
+# and in front -- 'subdivision (g) of U.S. note 31'. Reading only the inline form sent 202
+# provisions to the parent note, which carries the union of its subdivisions' lists:
+# 9903.91.06 names note 31(g), a list of graphite and magnets, and inherited note 31's 412
+# codes instead, reaching steel it has nothing to do with. D-0037.
+#
+# The path can nest -- 'subdivision (j)(7)(iii) of U.S. note 52' -- and one clause can name
+# several -- 'subdivisions (d) and (f) of U.S. note 37'.
+SUBDIVISION_PATH = r"\([a-z0-9]+\)(?:\([a-z0-9]+\))*"
 NOTE_CITATION = re.compile(
-    r"((?:additional\s+)?U\.S\.\s+note\s+\d+(?:\([a-z0-9]+\))*"
+    rf"(?:(?P<paths>(?:sub)?divisions?\s+{SUBDIVISION_PATH}"
+    rf"(?:\s*(?:,|and|or)\s*{SUBDIVISION_PATH})*)\s+(?:of|to)\s+)?"
+    rf"(?P<note>(?:additional\s+)?U\.S\.\s+note\s+\d+(?P<inline>(?:\([a-z0-9]+\))*)"
     r"(?:\s+to\s+(?:this subchapter|chapter\s+\d+|section\s+[IVX]+))?)",
     re.IGNORECASE,
 )
+EACH_PATH = re.compile(SUBDIVISION_PATH, re.IGNORECASE)
 # The CAS registry number itself rather than the 'CAS No.' label: the label is spelled
 # six ways in this revision, and four provisions write the number with no label at all.
 CAS_NUMBER = re.compile(r"\b(\d{2,7}-\d{2}-\d)\b")
@@ -163,10 +190,25 @@ def parse_ch99(path: str, *, source_fetch_id: int | None) -> Ch99Data:
                                    "country_code": code, "relation": "product_of"})
         for value in sorted(set(CAS_NUMBER.findall(text))):
             data.identifiers.append({"rule_hts": node.hts, "kind": "cas", "value": value})
-        for cited in sorted({_tidy(m) for m in NOTE_CITATION.findall(text)}):
-            data.notes.append({"rule_hts": node.hts, "cited_text": cited, "note_id": None})
+        for cited, subdivision in _note_citations(text):
+            data.notes.append({"rule_hts": node.hts, "cited_text": cited,
+                               "cited_subdivision": subdivision, "note_id": None})
 
     return data
+
+
+def _note_citations(text: str) -> list[tuple[str, str | None]]:
+    found = set()
+    for match in NOTE_CITATION.finditer(text):
+        cited = _tidy(match.group(0))
+        # A clause naming several subdivisions is several citations sharing one span, so
+        # each gets its own row rather than one row nobody can resolve.
+        if match.group("paths"):
+            for path in EACH_PATH.findall(match.group("paths")):
+                found.add((cited, path))
+        else:
+            found.add((cited, match.group("inline") or None))
+    return sorted(found, key=lambda pair: (pair[0], pair[1] or ""))
 
 
 def _excluded_codes(text: str) -> list[str]:
@@ -251,7 +293,7 @@ CHILD_TABLES = (
     ("rule_edge", ("source_hts", "edge_type", "target_hts")),
     ("rule_country", ("rule_hts", "country_name", "country_code", "relation")),
     ("rule_identifier", ("rule_hts", "kind", "value")),
-    ("rule_note", ("rule_hts", "cited_text", "note_id")),
+    ("rule_note", ("rule_hts", "cited_text", "cited_subdivision", "note_id")),
 )
 
 # rule is referenced by five tables. Naming them, rather than CASCADEing, means a table

@@ -1325,6 +1325,298 @@ that reason. The alternative was a table 60 times larger whose contents are 98% 
 
 **Feeds.** SUBMISSION.md §2
 
+## D-0037 — Read a subdivision citation in both forms it is printed in
+**Date:** 2026-08-25 · **Area:** parser, resolver · **Status:** accepted
+
+**Context.** Found while designing Part 3, by counting how many duty layers a single query
+returns. `7208.51.00.30` from China returned **14 additive provisions**, among them
+`9903.91.01 +25%`, `9903.91.02 +50%` and `9903.91.03 +100%` — three mutually exclusive
+rates in force on the same day for the same goods, which cannot be right.
+
+The cause is that a subdivision is printed two ways and only one was read. Inline,
+`U.S. note 20(b)`, which `NOTE_CITATION` matched; and in front, `subdivision (g) of
+U.S. note 31`, which it did not, because the label precedes the words "U.S. note". **202
+provisions** name a subdivision that way. All of them linked to the parent note instead —
+and a parent note holds the union of its subdivisions' lists, so:
+
+```
+9903.91.06 says   "as provided for in subdivision (g) of U.S. note 31"
+note 31(g) is     2504.10.10, 2504.10.50, 2504.90.00, 8505.11.00, 8507.60.00   (graphite, magnets)
+note 31 parent is 412 codes, 7208.51.00 among them
+```
+
+The provision reached steel through a note about graphite. The prose has four shapes,
+including nesting and multiple labels in one clause:
+
+```
+subdivision (v) of U.S. note 2                  111 provisions
+subdivision (j)(7)(iii) of U.S. note 52          74
+subdivisions (d) and (f) of U.S. note 37          5   -- one clause, two citations
+subdivision (v)(iii)(a) of U.S. note 2
+```
+
+**Options.**
+- Match the prefix in the resolver, leaving `cited_text` as it was — the citation text
+  would then no longer contain what it was resolved by, which is the split D-0015 exists
+  to prevent.
+- Match it in the extractor and normalise `cited_text` into the inline form — loses the
+  fact of how the provision actually printed it.
+- Match it in the extractor, keep `cited_text` verbatim, and record the path beside it.
+
+**Decision.** The third. `rule_note` gains `cited_subdivision`, holding the path exactly as
+printed — `(b)`, `(j)(7)(iii)` — and one row is written per label named, so
+`subdivisions (d) and (f)` is two citations sharing one `cited_text`. The unique key becomes
+`(rule_hts, cited_text, cited_subdivision)`.
+
+Measured after: all 13 note-31 provisions now link to their own subdivision, the additive
+layers on Chinese steel fall from **14 to 6**, `unresolved_note` issues from **62 to 1**,
+and citations linked rise from 738 to 850.
+
+**Tradeoff.** Only the outermost label can be looked up, because the PDF segmenter isolates
+one level — `(j)(7)(iii)` resolves no further than note 52(j). That is recorded rather than
+hidden; see D-0038.
+
+**Feeds.** SUBMISSION.md §2, §4
+
+---
+
+## D-0038 — Fall back to the parent note, and say so in a column
+**Date:** 2026-08-25 · **Area:** schema, resolver · **Status:** accepted
+
+**Context.** D-0037 made citations name subdivisions. **277 of 977** name one that is not a
+row in `note`, so they resolve to nothing. Almost all are note 2 — the IEEPA reciprocal
+tariff, the most frequently applied duty in the schedule.
+
+The cause is the segmenter, and it is not a small bug. `_split_subdivisions` accepts a
+label only if it is the next in sequence or within `MAX_GAP`, which exists to stop a label
+quoted inside prose from opening a subdivision. Note 2's top-level labels run
+`(a)(b)(c)(j)(k)(l)(m)(s)(t)(u)(v)(x)` — a gap of six between `(c)` and `(j)` — so
+everything from `(j)` on was rejected. Worse, a `(d)` **three levels down** (`2(v)(xxv)(d)`,
+PDF page 209) sat exactly at `highest + 1` and was accepted as a top-level subdivision, so
+the row stored as `note 2(d)` holds the wrong text.
+
+Doing this properly means reconstructing a three-level outline whose labels are reused at
+each level, from text with no indentation: verified, pypdf reports leading whitespace 0 on
+every line of the notes PDF. The PDF does print the full path in a compiler's note —
+`[Compiler's note: List for 2(v)(xxv)(d) may appear or continue on a subsequent page.]` —
+but only on **3 pages** of 807, so it cannot carry the segmentation.
+
+**Options.**
+- Raise `MAX_GAP` — admits `(j)`, and re-admits the `(vvv)` failure D-0034 built the cap to
+  stop, while leaving the mis-accepted nested `(d)` in place.
+- Link nothing when the subdivision is missing — never over-reports, and strips coverage
+  from 111 provisions of the reciprocal tariff, which is most of what a user asks about.
+- Rebuild the nested outline today — correct, and estimated at 60–90 minutes with no
+  guarantee of being right the first time, against a same-day deadline for Part 3.
+- Fall back to the parent and record that the match is inexact.
+
+**Decision.** The fourth. `rule_note.match_precision` takes one of four values, and every
+consumer must read it:
+
+```
+exact            note_id is the note the citation named                 573
+parent_fallback  note_id is an ancestor; coverage is WIDER than scope   277
+chapter_note     names a note in another chapter's document, absent     126
+unresolved       nothing matched; a parse_issue says so                   1
+```
+
+`parent_fallback` also raises a `subdivision_not_segmented` issue naming the label. Part 3
+must show it on the provision — "this cites note 2(v), which was not isolated; the coverage
+below is note 2 as a whole" — and link the note text and PDF page so a reader can settle it.
+
+**Tradeoff.** 277 citations show coverage broader than the provision truly has. This is
+the first place in the schema where a *wrong-but-labelled* answer is preferred to no
+answer, and it is only defensible because the label is machine-readable and the UI is
+required to surface it. Wrong the moment a consumer joins `rule_note` without reading
+`match_precision` — which is why the column is NOT NULL with no neutral default.
+
+**Feeds.** SUBMISSION.md §2, §4, §5
+
+---
+
+## D-0039 — Read codes a note names in prose, but only when it never says "not apply"
+**Date:** 2026-08-25 · **Area:** parser · **Status:** accepted
+
+**Context.** After D-0037, `9903.91.04` (+25%), `9903.91.07` (+50%) and `9903.91.08`
+(+100%) still landed on Chinese steel. Their notes are classified `prose` and yielded no
+codes, so the provisions kept the scope they were given before any note was read —
+`by_country_all_goods` — and applied to every Chinese import. `9903.91.08` is rubber
+gloves; it was adding 100 points to hot-rolled steel.
+
+The notes do name their codes, just in running text rather than on a list page:
+
+```
+31(i)  "products of China classified in 8-digit subheading 4015.12.10"
+31(e)  "facemasks of textiles, disposable, described in statistical reporting number 6307.90.9870"
+31(g)  "(1) 2504.10.10 (2) 2504.10.50 (3) 2504.90.00 ..."
+```
+
+`_content_kind` calls a body prose below 20 codes, and `_add` returns early for prose, so
+these were dropped. Counted across the whole PDF: **49 prose notes name codes and never say
+what they do not apply to; 107 more do both in the same body.**
+
+**Options.**
+- Extract codes from every prose note — picks up all 202 codes in the clean notes and also
+  1,667 from bodies that say "shall not apply to" in the same breath, inverting the meaning
+  of the provision.
+- Extract only from numbered items `(n) CODE` — catches 31(g), misses 31(e) and 31(i),
+  which is where the 100% duty was.
+- Extract behind a scoping lead-in, from notes with an affirmative statement and no
+  negative one.
+
+**Decision.** The third. A prose note is read only when it matches `applies to` / `apply to`
+and does **not** match `not apply` / `shall not`; codes are then taken from numbered items
+and from behind `subheading` / `statistical reporting number`. A code sitting loose in
+running text does not carry which sentence it belonged to, so the 107 mixed bodies are left
+alone rather than guessed at.
+
+Measured after: additive layers on Chinese steel **6 → 3**, and the one that reaches steel
+by code does so through note 31(b), which is the steel list. `mixed` notes rise 23 → 63.
+
+**Tradeoff.** The 107 mixed-direction notes still yield nothing, so provisions citing them
+stay `by_country_all_goods` and over-report — `9903.88.04` and `9903.88.09` are the two that
+survive on the steel query. Reading them needs sentence-level scope, not pattern matching.
+The rule is also a heuristic on wording: a note that states its scope without the words
+"applies to" is not read, and one that mentions "shall not" incidentally is skipped.
+
+**Feeds.** SUBMISSION.md §4, §5
+
+---
+
+## D-0040 — A note-level record takes the union of its subdivisions, not its own density
+**Date:** 2026-08-25 · **Area:** parser · **Status:** accepted · extends D-0034
+
+**Context.** After D-0037 and D-0039, 164 provisions still could not reach a base code
+through the note they cite. Partitioning them by what would actually unblock each one:
+
+```
+44  cite a parent note whose own subdivisions already carry codes
+54  cite a note that points at another note                          -> D-0041
+48  cite a note that says both what it applies to and what it does not
+27  cite a note that names no code at all -- a quota trigger price, a definition,
+    an ad valorem equivalence formula. Nothing to extract, by any method.
+```
+
+The first group is `U.S. note 20` alone, cited by 38 provisions. `_add` reads a note-level
+record's codes off its own body, and note 20's body is **912,964 characters** — its lists
+are in there, but `_content_kind` divides code characters by body characters, the ratio
+falls under the threshold, and the note was stored as prose with zero codes.
+
+**Options.**
+- Lower the density threshold — it exists to stop a sentence quoting two headings from
+  becoming a list, and lowering it far enough for note 20 removes that protection entirely.
+- Special-case note-level records to skip the classifier — silently makes every parent a
+  list, including parents that genuinely are prose.
+- Take the union of the subdivisions that were already extracted.
+
+**Decision.** The third. When a note-level record ends with no codes and its subdivisions
+have some, it inherits their union and is reclassified `mixed`. The semantics were already
+the intent — the existing comment says a note record repeats its subdivisions' codes
+"because a provision citing the note without a subdivision is pointing at all of them" —
+this stops that intent depending on how much prose surrounds the lists.
+
+Measured: `note_subheading` 36,896 → 48,170.
+
+**Tradeoff.** A parent whose subdivisions were themselves mis-segmented inherits the
+mistake — note 2 is exactly that case, and D-0038's `parent_fallback` is what keeps it
+visible. The union is also unordered with respect to the printed page: `ordinal` becomes
+the order subdivisions were parsed in, not the order the codes appear in the PDF.
+
+**Feeds.** SUBMISSION.md §2, §4
+
+---
+
+## D-0041 — Follow a note's pointer to another note, but only the scoping one
+**Date:** 2026-08-25 · **Area:** resolver · **Status:** accepted
+
+**Context.** 54 of the 164 blocked provisions cite a note that lists nothing itself and
+instead points at another note. Notes point at each other 224 times in this revision, and
+the two directions are distinguishable by the words used:
+
+```
+'the subheadings enumerated in U.S. note X'    70 times   what the duty COVERS
+'and provided for in U.S. note X'            154 times   an exclusion FROM it, and always
+                                                          after a 9903 heading:
+                                                          "...granted an exclusion by the
+                                                          USTR and provided for in: (1)
+                                                          heading 9903.88.33 and U.S. note
+                                                          20(ll)..."
+```
+
+Following every pointer would file all 154 USTR exclusion lists as the *scope* of the duty
+they exempt goods from — the exact inverse of what the note says.
+
+**Options.**
+- Follow every note-to-note reference — inverts the meaning on the majority of them.
+- Follow none, and leave the 54 provisions unable to reach anything.
+- Follow only `subheadings enumerated in`, the phrase that states coverage.
+
+**Decision.** The third, in the resolver rather than the parser: a note pointing at another
+note is interpretation, and `note_subheading` is the fact layer (D-0015). A note with no
+matches of its own inherits the matches of the notes it enumerates, to a depth of 2 with a
+visited set — one hop is what the data uses, and the cap is a backstop against a cycle
+rather than a modelled depth.
+
+Measured, together with D-0040: `note_base_match` 79,250 → 136,325; provisions rescoped to
+`by_code` 304 → 343; `by_country_all_goods` 99 → 67.
+
+**Tradeoff.** The phrase is a heuristic on wording. A note that states coverage in different
+words is not followed, and `9903.88.04` is the visible casualty — its note 20(g) says "as
+provided for in **this note**", a self-reference this does not resolve, so it stays
+country-wide and over-reports. Following "this note" would hand it all of note 20's 11,000
+codes, which is worse.
+
+**Feeds.** SUBMISSION.md §2, §4, §5
+
+---
+
+## D-0042 — Widen country extraction on evidence, not on imagination
+**Date:** 2026-08-25 · **Area:** parser · **Status:** accepted · extends D-0033
+
+**Context.** A control query — laptops, `8471.30.01.00`, from China — returned 14 additive
+provisions, among them `9903.01.15` (Canada) and `9903.02.43` (Myanmar). They were not
+filtered out because they have no `rule_country` row at all, so a country filter cannot see
+them. Querying for provisions whose prose names an origin and which have no row found
+**21** such provisions, and they fail in three distinct ways:
+
+```
+9903.01.15  'Potash that is a product of Canada'      subject is not 'articles/products/goods'
+9903.02.43  'the product of Myanmar (Burma)'          a parenthesis ends the name
+9903.01.51  'the product of Cote d`Ivoire or Namibia' not ASCII; the apostrophe is a backtick
+                                                       on one line and a curly quote on another
+9903.02.15  'the product of Japan with an ad valorem' 'with' was not a clause terminator
+```
+
+**Options.**
+- Enumerate the country names the schedule uses — a hand-written list, which D-0032
+  rejected once already and which the next revision breaks.
+- Widen the name character class to admit anything — the capture then runs into the rest of
+  the sentence.
+- Widen the class and let the terminators carry the weight, and normalise the punctuation
+  before the ISO lookup.
+
+**Decision.** The third. The subject may be any word before `that is a product of`; the name
+is lazy and stops at the first punctuation or clause word, with `(`, `with` and `classified`
+added to that set; and `country_code` normalises curly quotes and backticks to a straight
+apostrophe before the register lookup, which resolves both spellings of Cote d'Ivoire
+without an alias claiming they are different names. `area` joins `any` and `a member state`
+as generic, from "the product of any country **or area** including the United States".
+
+Measured: `rule_country` 397 → 422 links; unresolved country names 11 → 0, leaving only
+`European Union`, which is correctly not a country. Additive layers on the laptop control
+**14 → 8**, and every survivor either names China or is genuinely "any country" — the IEEPA
+universal baseline, which does apply.
+
+**Tradeoff.** A lazy capture bounded by terminators fails open: a name followed by a word
+not in the terminator set runs on, and the result is a `parse_issue` rather than a wrong
+code, because it will not match the ISO register. `unnamed_country` issues rose 13 → 36 as
+the wider subject admits more generic phrasings, which is the correct direction — they are
+recorded, not silently dropped.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

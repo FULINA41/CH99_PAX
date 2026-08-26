@@ -33,6 +33,24 @@ NOTE_START = re.compile(r"^(\d{1,3})\.(?=\s|$)\s*(.*)$")
 SUBDIVISION_START = re.compile(r"^\(([a-z]{1,4})\)\s*(.*)$")
 
 CODE = re.compile(r"\d{4}\.\d{2}(?:\.\d{2})?")
+# A note can name its codes in running prose rather than on a list page: as numbered items,
+# '(1) 2504.10.10 (2) 2504.10.50'; or behind a lead-in, 'classified in 8-digit subheading
+# 4015.12.10', 'described in statistical reporting number 6307.90.9870'. Density reads all
+# of it as prose, so the codes were dropped -- and a provision whose note yields no codes
+# keeps the scope it had before the note was read, 'all goods of this country'. That put
+# 9903.91.08's 100% duty on rubber gloves onto every Chinese import, steel included. D-0039.
+#
+# Read only from a note that says what it applies to and never says what it does not. 107
+# prose notes do both in one body, and a code sitting in running text does not carry which
+# sentence it belonged to; those are left alone rather than guessed at.
+ENUMERATED = re.compile(r"\(\d{1,3}\)\s*(\d{4}\.\d{2}(?:\.\d{2})?(?:\.\d{2})?)")
+SCOPED_CODE = re.compile(
+    r"(?:statistical\s+reporting\s+numbers?|(?:\d+-digit\s+)?(?:sub)?headings?)\s+"
+    r"(\d{4}\.\d{2}(?:\.\d{2})?(?:\.\d{2})?)",
+    re.IGNORECASE,
+)
+AFFIRMS = re.compile(r"appl(?:ies|y)\s+to", re.IGNORECASE)
+NEGATES = re.compile(r"not\s+apply|shall\s+not", re.IGNORECASE)
 
 LIST_DENSITY = 0.5
 MIXED_DENSITY = 0.25
@@ -76,6 +94,7 @@ def parse_notes(path: str, *, source_fetch_id: int | None) -> NotesData:
             _add(data, subchapter, number, None, lines, source_fetch_id)
             for letter, sub_lines in subdivisions:
                 _add(data, subchapter, number, letter, sub_lines, source_fetch_id)
+            _union_subdivisions(data, subchapter, number)
 
     if not data.notes:
         raise RuntimeError(f"no notes found in {path}; the PDF layout has changed")
@@ -157,6 +176,37 @@ def _split_subdivisions(lines):
     return lead, subdivisions
 
 
+def _union_subdivisions(data, subchapter, number):
+    # A note-level record is meant to hold what all its subdivisions hold, because a
+    # provision citing the note without one is pointing at all of them. Reading that off the
+    # parent's own body works until the body is mostly words: U.S. note 20 runs to 912,964
+    # characters, its code density falls under the list threshold, and it was stored as
+    # prose with no codes at all -- leaving 38 provisions that cite it with nothing to reach.
+    # Taking the union directly does not depend on how much prose surrounds the lists. D-0040.
+    parent = (subchapter, number, None)
+    if any(row["note_key"] == parent for row in data.subheadings):
+        return
+
+    inherited, seen = [], set()
+    for row in data.subheadings:
+        key = row["note_key"]
+        if key[0] != subchapter or key[1] != number or key[2] is None:
+            continue
+        if row["hts_prefix"] in seen:
+            continue
+        seen.add(row["hts_prefix"])
+        inherited.append({"note_key": parent, "hts_prefix": row["hts_prefix"],
+                          "ordinal": len(inherited)})
+    if not inherited:
+        return
+
+    data.subheadings.extend(inherited)
+    for note in data.notes:
+        if (note["subchapter"], note["note_number"], note["subdivision"]) == parent:
+            note["content_kind"] = "mixed"
+            break
+
+
 def _add(data, subchapter, number, subdivision, lines, source_fetch_id):
     body = " ".join(line for _, line in lines).strip()
     if not body:
@@ -165,6 +215,10 @@ def _add(data, subchapter, number, subdivision, lines, source_fetch_id):
     pages = [page for page, _ in lines]
     codes = find_codes(body)
     kind = _content_kind(body, codes)
+    if kind == "prose":
+        named = _codes_named_in_prose(body)
+        if named:
+            codes, kind = named, "mixed"
     label = (f"U.S. note {number}"
              f"{'(' + subdivision + ')' if subdivision else ''} to subchapter {subchapter}")
 
@@ -195,6 +249,13 @@ def _add(data, subchapter, number, subdivision, lines, source_fetch_id):
             "hts_prefix": code,
             "ordinal": ordinal,
         })
+
+
+def _codes_named_in_prose(body: str) -> list[str]:
+    if not AFFIRMS.search(body) or NEGATES.search(body):
+        return []
+    found = ENUMERATED.findall(body) + SCOPED_CODE.findall(body)
+    return list(dict.fromkeys(found))
 
 
 def find_codes(text: str) -> list[str]:
