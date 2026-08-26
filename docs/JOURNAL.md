@@ -1336,3 +1336,42 @@ parser run twice, no code change: nine tables identical, parse_issue 848 both ti
 Russian aluminium duty on steel, and the coverage query. Neither is visible from inside Part
 2, because Part 2's question is "did every row get parsed" and this one is "is the answer
 right". Building the consumer is the test.
+
+**Step 3 — the three core pages.** Tailwind v4, native HTML for every interaction, no client
+JavaScript anywhere. `<details>` does the collapsing, `<select>` does the country, a plain GET
+form does the recalculation — all of which are keyboard- and screen-reader-correct without a
+component library, and all of which keep the pages server-rendered. Radix and lucide were
+considered and dropped for exactly that reason: they would have turned components that need no
+JavaScript into client components, in an app whose whole claim is that the server computed the
+answer.
+
+Two structural changes fell out of building it:
+
+- Country moved from a path segment to a query parameter. `/duty/7208.51.00.30/CN` cannot be
+  changed by a form without JavaScript; `/duty/7208.51.00.30?country=CN` can, with a `<select>`
+  and a submit button.
+- `next.config.ts` became `next.config.mjs`. Next transpiles a `.ts` config at startup and a
+  failure in that step surfaced as `ReferenceError: x is not defined` with no file and no line
+  — fifteen minutes to find, and nothing to gain from the types.
+
+The palette is four operator colours on a warm paper ground, and each is paired with a symbol
+— `+` `→` `±` `?` — so the meaning survives without the colour. Type is IBM Plex in three
+roles: serif for headings, sans for prose, mono for every code, rate and amount.
+
+Verified by reading the rendered pages rather than by trusting the components:
+
+```
+/                                            200   0.63 s
+/search?q=hot-rolled+steel+plate&country=CN  200   0.22 s   40 results
+/duty/7208.51.00.30?country=CN&value=100000  200   0.38 s   25% .. up to 50%
+/duty/2922.49.30.00?country=DE&value=50000   200   0.19 s   4 alternative reductions, by CAS
+/duty/7208.51.00.30?country=RU&value=100000  200   0.25 s   Column 2, 20% .. up to 220%
+/duty/7208.51.00.30?country=DE&value=100000  200   0.12 s   Free, nothing applies
+/duty/9999.99.99.99                          404
+tsc --noEmit                                 clean
+```
+
+**Agent notes.** I wrote user-facing copy with `--` in it, because the Python source around it
+uses `--` for dashes, and shipped it to the page before noticing. Small, but it is the same
+class as the SQL-substring tests: a convention from one context carried into another where it
+is wrong, and only caught by looking at the actual output.

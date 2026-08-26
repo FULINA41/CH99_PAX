@@ -140,3 +140,43 @@ FROM rule_note rn LEFT JOIN note n ON n.id = rn.note_id
 WHERE rn.rule_hts = ANY(%(rules)s)
 ORDER BY rn.rule_hts, n.label
 """
+
+
+# Keyword search over the schedule's own wording. Two passes, because they fail differently:
+# full text finds "steel plate hot-rolled" in a description written in that order, and
+# trigram finds a misspelling or a fragment that stemming will not reach. Neither knows what
+# a product is -- this matches prose, and classification stays the importer's job.
+#
+# The programme count is computed live. Measured at 3.8 ms for a page of 30 codes, against
+# 1,568 ms for the coverage figure a duty page needs; the difference is cardinality, and
+# D-0047 is about telling those two cases apart.
+SEARCH = """
+WITH hit AS (
+    SELECT b.hts, b.full_description, b.units,
+           b.rate_text, b.rate_kind, b.rate_ad_valorem_pct,
+           ts_rank(b.full_description_tsv, plainto_tsquery('english', %(q)s)) AS rank
+    FROM hts_base b
+    WHERE b.full_description_tsv @@ plainto_tsquery('english', %(q)s)
+    ORDER BY rank DESC, length(b.full_description)
+    LIMIT %(limit)s
+)
+SELECT hit.*, (
+    SELECT count(DISTINCT p.heading_prefix) FROM (
+        SELECT rule_hts FROM rule_base_match WHERE base_hts = hit.hts
+        UNION
+        SELECT rn.rule_hts FROM note_base_match nbm
+          JOIN rule_note rn ON rn.note_id = nbm.note_id
+        WHERE nbm.base_hts = hit.hts
+    ) reach
+    JOIN trade_programme p ON p.heading_prefix = left(reach.rule_hts, 7)
+) AS programmes
+FROM hit ORDER BY rank DESC
+"""
+
+SEARCH_FUZZY = """
+SELECT b.hts, b.full_description, b.units, b.rate_text, b.rate_kind, b.rate_ad_valorem_pct,
+       similarity(b.full_description, %(q)s) AS rank, 0 AS programmes
+FROM hts_base b
+WHERE b.full_description %% %(q)s
+ORDER BY rank DESC LIMIT %(limit)s
+"""

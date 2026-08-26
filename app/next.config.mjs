@@ -1,12 +1,15 @@
-import type { NextConfig } from "next";
-
+// Plain JS rather than TypeScript: Next transpiles a .ts config at startup, and a failure in
+// that step reports as a ReferenceError with no file or line. One less moving part in the
+// path between `npm run dev` and a served page.
+//
 // The browser never talks to the API host directly. It asks this server for /api/..., which
 // forwards to the FastAPI service -- so there is no CORS to configure, no API origin baked
 // into a bundle, and the JSON a reader can inspect sits on the same origin as the page that
 // rendered it. Server Components skip the hop and call API_URL themselves.
 const API_URL = process.env.API_URL ?? "http://localhost:8000";
 
-const config: NextConfig = {
+/** @type {import('next').NextConfig} */
+const config = {
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API_URL}/:path*` }];
   },

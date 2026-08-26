@@ -1,20 +1,93 @@
-/* Placeholder. The design lands in Step 3; this only keeps the scaffold legible. */
-:root {
-  --ink: #16181d;
-  --paper: #ffffff;
-  --muted: #5c6370;
-  --rule: #e2e5ea;
+@import "tailwindcss";
+
+/* The subject is a printed legal schedule, not a dashboard, and the palette is built for
+   that: a warm paper ground, ink with a blue bias, hairline rules instead of cards and
+   shadows. The four operator colours are the only saturated things on the page, because
+   they are the only things carrying meaning that colour can carry.
+
+   Red is a duty going up and green a duty coming down -- but the symbols +, ->, +-, ? say
+   the same thing, so nothing is lost if the colours are not seen. */
+@theme {
+  --color-paper: oklch(99% 0.004 85);
+  --color-raised: oklch(97% 0.006 85);
+  --color-ink: oklch(23% 0.014 265);
+  --color-muted: oklch(50% 0.014 265);
+  --color-faint: oklch(64% 0.012 265);
+  --color-rule: oklch(90% 0.006 265);
+  --color-rule-strong: oklch(80% 0.008 265);
+
+  /* Operators. Deep and printed rather than alert-bright: this is a document, not an alarm. */
+  --color-raise: oklch(45% 0.16 26);
+  --color-raise-soft: oklch(95% 0.03 26);
+  --color-lower: oklch(43% 0.12 155);
+  --color-lower-soft: oklch(95% 0.04 155);
+  --color-flat: oklch(55% 0.01 265);
+  --color-flat-soft: oklch(95% 0.004 265);
+  --color-unsure: oklch(52% 0.12 75);
+  --color-unsure-soft: oklch(95% 0.05 75);
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-plex-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-* { box-sizing: border-box; }
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-paper: oklch(19% 0.012 265);
+    --color-raised: oklch(23% 0.014 265);
+    --color-ink: oklch(93% 0.006 85);
+    --color-muted: oklch(72% 0.012 265);
+    --color-faint: oklch(58% 0.012 265);
+    --color-rule: oklch(30% 0.012 265);
+    --color-rule-strong: oklch(40% 0.014 265);
+
+    --color-raise: oklch(72% 0.15 26);
+    --color-raise-soft: oklch(28% 0.05 26);
+    --color-lower: oklch(72% 0.13 155);
+    --color-lower-soft: oklch(27% 0.05 155);
+    --color-flat: oklch(66% 0.01 265);
+    --color-flat-soft: oklch(26% 0.006 265);
+    --color-unsure: oklch(78% 0.13 75);
+    --color-unsure-soft: oklch(28% 0.06 75);
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
 body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
-main { max-width: 46rem; margin: 4rem auto; padding: 0 1.5rem; }
-code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
-table { border-collapse: collapse; width: 100%; }
-th, td { text-align: left; padding: 0.35rem 0.75rem 0.35rem 0; border-bottom: 1px solid var(--rule); }
-th { color: var(--muted); font-weight: 500; }
-td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Digits that line up in a column, everywhere. A rate table where 6.5% and 25% do not share
+   a decimal position is harder to read than it needs to be. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Native disclosure, styled. No JS, keyboard and screen readers work by default. */
+details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 1rem;
+  color: var(--color-faint);
+  transition: transform 120ms ease;
+}
+details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
+}

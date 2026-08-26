@@ -24,7 +24,7 @@ def applicable(
     your code" and still doubt "the provision names your country". See ``queries.APPLICABLE``.
 
     Nothing is filtered by date here. A provision that expired in 2020 or starts in November
-    is still an answer to "what touches this good" -- it is the caller that decides where to
+    is still an answer to "what touches this good" — it is the caller that decides where to
     put it, and hiding it would be the same silence the dataset already suffers from.
 
     Args:
@@ -134,8 +134,12 @@ def _evidence(hts: str, country_code: str | None, codes: list[str]) -> dict[str,
             continue
         cited = row["cited_subdivision"] or ""
         inexact = row["match_precision"] == "parent_fallback"
+        # The label usually already carries the subdivision -- "U.S. note 31(b) to subchapter
+        # III" -- so repeating it reads as a stutter. It is worth saying only when the label
+        # does not show it, which is exactly the fallback case.
+        repeat = bool(cited) and cited in (row["note_label"] or "")
         detail = (f"The provision points at {row['note_label']}"
-                  + (f" subdivision {cited}" if cited and not inexact else "")
+                  + (f" subdivision {cited}" if cited and not inexact and not repeat else "")
                   + f", whose list includes {row['cited_code']}")
         if inexact:
             detail += (f" — but it names subdivision {cited}, which could not be isolated from"

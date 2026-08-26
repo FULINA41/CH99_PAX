@@ -25,7 +25,7 @@ UNKNOWNS: dict[str, dict[str, str]] = {
     "exclusion": {
         "question": "Is my product on one of these exclusion lists?",
         "why": (
-            "An exclusion describes a product, not a code -- the same subheading holds goods "
+            "An exclusion describes a product, not a code — the same subheading holds goods "
             "that are excluded and goods that are not. Deciding needs the goods in front of "
             "you and the note text side by side."
         ),
@@ -49,7 +49,7 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "Several duty reductions cite my code. Which one is mine?",
         "why": (
             "Subchapter II provisions are told apart by what the goods are, not by how they "
-            "classify -- four provisions cite 2922.49.30, each naming a different substance "
+            "classify — four provisions cite 2922.49.30, each naming a different substance "
             "by CAS registry number. The HTS code cannot choose between them. D-0019."
         ),
         "source_name": "your product's CAS registry number, against the numbers listed here",
@@ -65,7 +65,7 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         ),
         "source_name": "CBP CROSS binding rulings",
         "url": CROSS,
-        "what_to_search": "your product in plain English -- rulings show how CBP decided",
+        "what_to_search": "your product in plain English — rulings show how CBP decided",
     },
     "column2": {
         "question": "Does my country pay the Column 1 or the Column 2 rate?",
@@ -103,7 +103,7 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "Do these provisions actually cover my goods?",
         "why": (
             "Each of these names your country of origin but limits the goods in prose rather "
-            "than by code -- \"Aluminum articles that are the product of Russia\", for "
+            "than by code — \"Aluminum articles that are the product of Russia\", for "
             "instance. Nothing in the data ties that wording to a subheading, so they are "
             "listed but left out of the total. Read the text against your shipment."
         ),
@@ -115,7 +115,7 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "Why does this provision look like it covers so much?",
         "why": (
             "It cites a subdivision of a U.S. note that the notes parser could not isolate "
-            "from the PDF, so the coverage shown is the whole note -- wider than the "
+            "from the PDF, so the coverage shown is the whole note — wider than the "
             "provision really is. D-0038."
         ),
         "source_name": "the note text and page number shown on the provision",

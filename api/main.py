@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from db import lifespan
-from routes import duty, meta
+from routes import duty, meta, search
 
 app = FastAPI(
     title="HTSUS API",
@@ -18,3 +18,4 @@ app = FastAPI(
 
 app.include_router(meta.router)
 app.include_router(duty.router)
+app.include_router(search.router)

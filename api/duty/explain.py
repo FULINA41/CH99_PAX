@@ -17,7 +17,7 @@ REDUCTION_PREFIX = "9902"
 CEILING = (
     "The higher figure adds the provisions that name your country of origin but describe the "
     "goods they cover in words rather than by code. Whether any of them covers your shipment "
-    "is a question about the goods, which this data cannot answer -- read them and decide."
+    "is a question about the goods, which this data cannot answer — read them and decide."
 )
 
 
