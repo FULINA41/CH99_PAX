@@ -24,6 +24,15 @@ export type Programme = {
   editorial: true;
 };
 
+export type Condition = {
+  kind: "col1_rate";
+  operator: "lt" | "gte";
+  value: string;
+  verbatim: string;
+  // null when the base rate is a sentence, so the condition can be neither met nor failed.
+  met: boolean | null;
+};
+
 export type Evidence = {
   kind: "cited_code" | "note_list" | "country" | "country_wide";
   detail: string;
@@ -55,6 +64,8 @@ export type Effectivity = {
 export type Layer = {
   hts: string;
   description: string;
+  origin_scope: "none" | "any" | "named" | "unresolved";
+  conditions: Condition[];
   scope: "by_code" | "by_country_all_goods" | "unknown";
   term: Term;
   effectivity: Effectivity;
@@ -104,6 +115,8 @@ export type DutyStack = {
   column2: BaseRate | null;
   layers: Layer[];
   origin_scoped: Layer[];
+  origin_unresolved: Layer[];
+  not_eligible: Layer[];
   reductions: Layer[];
   exclusions: { note_label: string | null; note_id: number | null; provisions: string[] }[];
   inactive: Layer[];

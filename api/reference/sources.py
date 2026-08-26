@@ -111,6 +111,20 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "url": HTS,
         "what_to_search": "the heading number, then read what it says it applies to",
     },
+    "origin_unresolved": {
+        "question": "Is my country of origin inside the set this provision names?",
+        "why": (
+            "Each of these limits itself to a group of countries the schedule does not list "
+            "here — \"any country identified in general note 3(b)\", \"any country not exempt "
+            "under U.S. note 41(c)\", \"any country determined by CBP to have been "
+            "transshipped\". The list lives in a document none of the three sources contains, "
+            "so whether yours is in it cannot be answered here. Shown and left out of the "
+            "figure. D-0056."
+        ),
+        "source_name": "the General Note or U.S. note the provision names",
+        "url": HTS,
+        "what_to_search": "the note number quoted in the provision, then your country",
+    },
     "scope_widened": {
         "question": "Why does this provision look like it covers so much?",
         "why": (

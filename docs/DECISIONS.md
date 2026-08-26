@@ -1959,16 +1959,409 @@ was read and corrected only by the resolver (D-0018).
 
 ---
 
+## D-0050 — Generate the model's sentences offline and commit them, rather than at parse time
+
+**Date:** 2026-08-26 · **Area:** parser, app · **Status:** superseded by D-0055
+
+**Context.** Two things the app wants are judgements no source states. A novice cannot get
+"Chinese steel, 25% on top of the normal rate" out of *"Effective with respect to entries on
+or after September 27, 2024, articles the product of China, as provided for in subdivision
+(b) of U.S. note 31 to this subchapter"*. And of the 167 U.S. notes a provision cites
+that are not pure code lists — 150 prose, 17 mixed — the app can say only "no codes found",
+which reads as a parser failure whether or not it is one. 9 of them are definitions and have
+no list to find.
+
+Both are paraphrase. A model does them well. The question is where the call happens.
+
+**Options.**
+- **At request time.** Every page view pays latency and cost, two readers of the same
+  provision can be told different things, and the app stops working without a key.
+- **In the parse workflow.** Part 2 would need network access and a secret, which is exactly
+  what its separation from Part 1 exists to prevent — and two parses of one release would
+  produce different databases.
+- **Offline, committed as an artifact.** A separate script writes JSON, the file is reviewed
+  in a diff like any other change, and the parse run only loads it.
+
+**Decision.** The third. `workflows/build_interpretation.py` writes
+`workflows/seed/rule_summaries.json` and `note_roles.json`; the `materialize` task loads them
+into `rule_summary` and `note_role`. Nothing in the workflow imports a model client.
+
+Each record carries the SHA-256 of the text it was written from. The loader recomputes it
+against the current row and **discards any record that no longer matches**, with a
+`parse_issue`. This is the whole answer to the brief's *"how do you keep it true when the
+tables under it change?"*: a revision that rewrites a provision loses its paraphrase, and the
+app falls back to the schedule's own wording rather than keeping a fluent sentence about
+wording that is gone. A missing artifact is a supported state, not a failure — a fresh clone
+that never ran the build step shows verbatim text everywhere.
+
+Two checks run in code before a record is kept, because a prompt is a request and not a
+guarantee: **a sentence may contain no number absent from the text it describes**, and a role
+must be one of five. On the note pass this rejected **10 of 167** answers — one had invented
+`1.36`, `25` and `28`; six had supplied a year the note never states; one answered about a
+note that was not in the batch. All ten read perfectly.
+
+**Tradeoff.** The artifact goes stale between builds, silently in the sense that nobody is
+told to rebuild it — the staleness only surfaces as a missing paraphrase after a revision.
+Regenerating costs a model run over 3,098 provisions and 167 notes, so it is not something
+done casually. And a committed generated file is a file a reviewer has to trust was generated
+by the script rather than edited by hand; the SHA gate limits the damage but does not prove
+provenance.
+
+**Feeds.** SUBMISSION.md §2, §6
+
+---
+
+## D-0051 — Key the committed note artifact on the note's printed identity, not its row id
+
+**Date:** 2026-08-26 · **Area:** parser · **Status:** superseded by D-0055
+
+**Context.** `note.id` is a `bigserial`. `load_notes` clears the table and re-inserts on every
+parse run, so ids are reassigned: the note that is id 493 today is not the note that was 493
+last week. An artifact keyed on id would attach last week's label to this week's note, and
+the SHA gate would not catch it — the digest would be compared against the wrong body and the
+record would simply be dropped, or worse, silently match if two notes share wording.
+
+**Options.**
+- Key on `note_id` and accept it, since parses are rare.
+- Give `note` a stable surrogate key, e.g. a hash of its identity, and store it.
+- Key the artifact on the note's natural key and resolve it at load time.
+
+**Decision.** The third. `note` already carries
+`UNIQUE NULLS NOT DISTINCT (note_kind, subchapter, note_number, subdivision)` — the note as
+the PDF prints it. The artifact records that tuple, the loader joins on it, and `note_role`
+still stores `note_id` because that is what the app queries by.
+
+`rule_summary` needs none of this: `rule.hts` is the provision's own code and is stable
+across revisions by definition.
+
+**Tradeoff.** The artifact is one join wider than it needs to be, and the natural key is only
+as stable as the notes parser's segmentation — the 277 subdivisions it cannot isolate from
+the PDF (D-0038) are subdivisions this key cannot name either. That is the same limit,
+inherited, not a new one.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
+## D-0052 — Two transports for the offline build, because this machine has no API key
+
+**Date:** 2026-08-26 · **Area:** tooling · **Status:** superseded by D-0055
+
+**Context.** `build_interpretation.py` needs a model. The obvious client is the Anthropic
+SDK with `ANTHROPIC_API_KEY`. This repository was written on a machine with Claude Code
+installed and **no raw API key** — `env`, `workflows/.env` and the Claude settings all have
+none. A build step that could not run here would have shipped as a script nobody had
+executed, producing an empty `seed/` directory and a feature that exists only in prose.
+
+**Options.**
+- API only, and ship the artifacts ungenerated. Honest, and leaves the app with no
+  paraphrases at all.
+- API only, and hand-write the artifacts. Faster, and a lie about how they were produced.
+- Two transports: the SDK when a key is present, the Claude Code CLI in headless mode
+  (`claude -p --output-format json`) otherwise.
+
+**Decision.** The third, in `workflows/llm.py`. `choose_transport` picks the API when
+`ANTHROPIC_API_KEY` is set and the CLI otherwise; `LLM_TRANSPORT` overrides. The SDK import
+is lazy, so the CLI path needs no extra dependency, and `anthropic` sits in its own
+`llm` dependency group rather than in the workflow's runtime requirements.
+
+One trap is worth the code it costs: **the CLI reports a model-side failure in its JSON body
+with exit code 0.** A return-code check alone would have written "I cannot help with that"
+into the artifact as if it were a summary. There is a test for it.
+
+**Tradeoff.** Two paths means one of them is less exercised — the artifacts in this
+repository were built entirely through the CLI, so the API transport is written and typed but
+has not produced a row. That is stated here rather than left for a reader to discover. The
+CLI is also slower and more expensive per call than the API, because each invocation carries
+Claude Code's own system prompt: measured at ~25,000 cached tokens per request.
+
+**Feeds.** SUBMISSION.md §6
+
+---
+
+## D-0053 — Part 3 is a document, not an agent
+
+**Date:** 2026-08-26 · **Area:** app · **Status:** accepted, closes P-g · amended by D-0055
+
+**Context.** P-g recorded, before Part 2 was built, that Part 3 was intended to be an agent,
+and asked that the choice be revisited once the schema existed. It now does, so it is decided
+here rather than left open.
+
+The question Part 3 answers — *what does Chapter 99 do to this good from this country* — is
+deterministic. Every step of it is a join, and every join has a row a reader can be shown.
+The whole value proposition of the build is that the derivation is visible.
+
+**Options.**
+- A tool-calling agent over the schema. Answers questions nobody anticipated; its reasoning
+  is a transcript rather than a page, and it can be confidently wrong in the same voice it is
+  right in.
+- A natural-language front door onto the deterministic engine — parse the question, run the
+  same computation, render the same page. Demos well; the parsing step is the only new part
+  and it is the part that fails silently.
+- A document: fixed screens, every figure traced to a row.
+
+**Decision.** The third. The two uses of a model in this build are both **paraphrase of text
+that is on the screen beside them** (D-0050), which is the one job where a wrong answer is
+visible to the reader who cares. Nothing generative touches the duty stack: the stack is
+structured data, and letting a model restate its numbers is the single most expensive place
+misinformation could enter this app.
+
+**Tradeoff.** A user with a question the five screens do not answer has nowhere to go — no
+"why is this different from last year", no "compare these two codes". Retrieval-then-rank
+over search candidates was designed and cut for the same reason it would be the first thing
+built next: it is the one place a model adds reach without being allowed to state a fact.
+Recorded as future work rather than shipped half-checked.
+
+**Feeds.** SUBMISSION.md §3, §4, §6
+
+---
+
+## D-0054 — Hard-code the four Column 2 countries, and mark them editorial
+
+**Date:** 2026-08-26 · **Area:** app, domain · **Status:** accepted
+
+**Context.** `hts_base` carries a parsed Column 2 rate for every row (D-0028), and Column 2
+is roughly eightfold higher than Column 1 on the same line: `7208.51.00.30` is **Free** in
+Column 1 and **20%** in Column 2. Which countries are read against Column 2 is stated in
+General Note 3(b), and **the three sources this project fetches contain no General Notes at
+all** — the same gap D-0027 records for Column 1 Special.
+
+Doing nothing is not neutral. Every country would be answered against Column 1, so a Russian
+shipment of that steel would be reported as Free: wrong by the entire duty, on the front page,
+with no indication anything was missing.
+
+**Options.**
+- Answer Column 1 always, and raise an unknown saying the column could not be determined.
+  Correct about its ignorance and wrong about the number.
+- Fetch the General Notes as a fourth source. Correct, and a Part 1 change late in Part 3 —
+  the note is a separate PDF with its own parsing problem.
+- Carry the four countries as an editorial constant, named as such, citing the note.
+
+**Decision.** The third, in `api/reference/column2.py`: Cuba, North Korea, Russia, Belarus,
+with `GENERAL_NOTE` naming the source of the claim. The `column2` unknown fires whenever the
+answer depends on it — for those four countries, and whenever no country was supplied at all
+— so a reader is told the list is an editorial addition and where to check it.
+
+**Tradeoff.** A hard-coded list is wrong the moment the note changes, and nothing in this
+system will notice: unlike `trade_programme`, whose `evidence` column is checkable against
+parsed rows, this list has no internal check at all. It is four entries of borrowed
+knowledge, and its only defence is that it is labelled and cited. Fetching the General Notes
+would end the argument, and is the better answer if there is time (P-j is the same shape).
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0055 — Remove the machine-written layer: it restated what the page already said
+
+**Date:** 2026-08-26 · **Area:** app, parser · **Status:** accepted, supersedes D-0050,
+D-0051, D-0052 and amends D-0053
+
+**Context.** D-0050 built two model-written tables: `rule_summary`, a plain-English
+restatement of each provision, and `note_role`, a label saying what a prose U.S. note does.
+Both shipped as committed offline artifacts with a SHA-256 freshness gate. Both worked.
+They are being removed anyway, and the reason is worth recording precisely, because it is
+not the reason one would guess.
+
+**It is not that they were wrong.** They were audited before the decision:
+
+```
+3,094 summaries checked against the rate_kind operator they describe:
+  free / additive / replace   — zero cross-contamination between the three
+  135 'none'-rate summaries matching /no duty/  — sampled: all say "no duty rate
+                                                  specified", which is correct
+  2 'no_change' summaries saying "duty-free"    — checked against the source:
+        9903.01.04 reads "Articles that are entered free of duty under general note 11"
+        the sentence is faithful to the provision
+```
+
+Nothing wrong was found. The removal is about value, not correctness.
+
+**It is that they were redundant with the design around them.** A duty card already shows
+the code, `+ 25%` in red, the chip *Section 301 — China*, and the evidence line *"The
+provision points at U.S. note 31(b), whose list includes 7208.51"* — and then the paraphrase
+said *"Chinese articles listed in U.S. note 31(b): 25% on top of the normal duty."* The
+formula strip, the programme label and the evidence line had already done the explaining.
+The sentence restated three things the reader had just read.
+
+**Options.**
+- Keep both. A working feature, and the submission has a use of AI to describe.
+- Keep `note_role` only — 157 records answering something no join can (*is this note's
+  missing code list a parser failure, or does the note have no list?* 129 of 157 have none),
+  small enough to spot-check, closed vocabulary.
+- Remove both, and let D-0053's argument stand alone.
+
+**Decision.** Remove both, on the user's call. `rule_summary`, `note_role`,
+`build_interpretation.py`, `llm.py`, `parsing/interpretation.py`, `workflows/seed/`, the
+`Machine` component and the API fields are gone; the schema is back to 14 tables; the
+`llm` dependency group is gone and `parse_issue.stage` no longer has a `materialize` value.
+**The product now contains no model output of any kind**, which makes D-0053 — Part 3 is a
+document, not an agent — the whole of this submission's position on AI rather than half of it.
+
+**What was measured before removing**, and is kept in `JOURNAL.md` because it cost an hour
+to learn and would otherwise have to be learned again:
+
+- One CLI call for 25 provisions: **35.3 s wall, 27.6 s to first token, 2,862 of 3,898
+  output tokens spent thinking** on a task that is one line of paraphrase per row.
+- The Claude Code CLI transport re-creates its ~15,000-token prompt cache on **every**
+  invocation, so the run cost about **$6.50** rather than the $1 estimated from a
+  cache-read assumption that never held.
+- The first version of the number check compared *printed* forms, so `5.0%` → `5%`,
+  `1,000` → `1000` and `$20.00` → `$20` read as fabrications: **38 correct summaries
+  rejected**. Comparing by value recovered 34 of them. The remaining 4 were the model
+  rewriting `6-1/2 digits` as `6.5`, which the check cannot verify and correctly refused.
+- The note pass rejected **10 of 167** for genuinely invented numbers — six supplying a year
+  the note never states. All ten read perfectly.
+
+**Tradeoff.** The freshness gate — a digest of the source text, recomputed on load, with the
+record discarded when it no longer matches — was the sharpest answer this project had to the
+brief's *"how do you keep it true when the tables under it change?"*, and it goes with the
+feature. The remaining answer is `rule_coverage` and the `materialize` task: everything
+derived is rebuilt in the same run that rewrites the tables under it, and a derived table
+nobody registered makes the parser's `TRUNCATE` fail loudly (D-0025). That is a weaker
+demonstration of the same principle, and the loss is real.
+
+The other cost is that a reviewer sees no AI in the product. That is a position rather than
+an omission, and D-0053 argues it: this app's whole claim is that every figure traces to a
+row, and the two places a model was allowed to speak were paraphrase of text sitting beside
+it — pleasant, and not load-bearing. Building them, measuring them and taking them out is
+the evidence that the claim was tested rather than asserted.
+
+**Feeds.** SUBMISSION.md §3, §4, §6
+
+---
+
+## D-0056 — The origin veto reads a scope column, not the absence of country rows
+
+**Date:** 2026-08-26 · **Area:** parser, app · **Status:** accepted
+
+**Context.** A reported case: men's knitted cotton T-shirts from China, `6109.10.00.12`. Base
+rate 16.5%, Section 301 List 4A adds 7.5%. The app answered **17.5%**, because it applied
+
+```
+9903.05.39  replace 10%   "Except for products described in headings 9903.05.85-9903.05.92
+                           and 9903.05.97, articles the product of a member state of the
+                           European Union, with an ad valorem (or ad valorem equivalent)
+                           rate of duty under column 1 less than 10 percent"
+```
+
+An EU-only provision replaced the base rate of a Chinese shipment.
+
+The veto was `r.hts NOT IN (SELECT rule_hts FROM rule_country) OR r.hts IN (named)` — a
+provision with no country rows was treated as country-neutral. That is right for *"articles
+the product of any country"* and wrong for *"a member state of the European Union"*, and
+`rule_country` cannot tell them apart: both have zero rows.
+
+**The parser had already caught it.** `parse_issue` held, for exactly these three provisions:
+
+```
+9903.05.38 / .39 / .97   keys on origin but names no country:
+                         'a member state of the European Union'
+```
+
+`countries.py` even carried `NOT_A_COUNTRY = {"european union"}` with a comment saying a NULL
+code "is the right answer rather than a failure". It was — and the app read the resulting
+silence as permission. **The defect is not that the parser was rigid; it is that the parser
+recorded its own limit and nothing downstream read the record.**
+
+**Options.**
+- Fail closed on every `unnamed_country` issue. Wrong: 27 of the 36 are *"any country"*, which
+  genuinely reaches every origin, and vetoing them would drop the reciprocal baseline.
+- Expand the EU in the app's query, as an editorial constant beside the Column 2 list.
+- Classify origin scope in the parser, where the phrase is, and expand blocs into real country
+  rows.
+
+**Decision.** The third. `rule.origin_scope`, four values:
+
+| value | n | meaning |
+| --- | ---: | --- |
+| `none` | 2,667 | does not key on origin |
+| `any` | 18 | keys on origin and reaches all of them |
+| `named` | 407 | `rule_country` holds the answer |
+| `unresolved` | 6 | bounded by a set this data cannot enumerate |
+
+The EU is a **published membership list, not an unknowable**, so `bloc_members` expands it into
+27 country rows (`rule_country` 422 → 503) and those three provisions become `named`. The six
+`unresolved` — *"any country not exempt under U.S. note 41(c)"*, *"identified in general note
+3(b)"*, *"determined by CBP to have been transshipped"* — go into a bucket of their own: shown,
+counted only towards the ceiling, with an unknown naming the document that decides.
+
+**Tradeoff.** `BLOCS` is a hard-coded membership list with the same weakness as the Column 2
+four (D-0054): it is right today and nothing in this system will notice when it changes. It is
+one bloc, cited, and checkable in a minute. The classifier also rests on a phrase test — *"any
+country"* alone is universal, *"any country <qualifier>"* is not — which is exact on the 36
+phrases in this release and would need re-reading against the next one.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
+## D-0057 — Read the eligibility conditions a provision states about the base rate
+
+**Date:** 2026-08-26 · **Area:** parser, app · **Status:** accepted
+
+**Context.** The same provision states a *second* limit the app also ignored: it covers goods
+*"with an ad valorem rate of duty under column 1 less than 10 percent"*. `6109.10.00.12` is
+16.5%. So even on an EU query the provision does not apply — and the app reported **10%**
+against a 16.5% base, understating by a third.
+
+The model had no place for this. `rate_kind` says what a provision **does**; `rule_country` says
+which **origins**; `effective_from` says **when**. Nothing said **on what terms**. 31 provisions
+state a term, and every one was applied to goods it excludes.
+
+**Options.**
+- Two columns on `rule` (`requires_col1_pct`, `requires_col1_compare`). Smallest change, and a
+  second kind of condition needs a migration.
+- Filter in SQL inside `APPLICABLE`. Fastest, and the page can then only say a provision is
+  absent, never why.
+- A small table, evaluated in Python, carrying the sentence verbatim.
+
+**Decision.** The third. `rule_condition(rule_hts, kind, operator, value, verbatim)`, 31 rows,
+one `kind` today. `verbatim` is the reason for the table rather than columns: **a provision left
+out of a total has to be able to quote the words that left it out**, and the duty page now
+renders exactly that under "Ruled out by their own wording".
+
+The comparison uses the good's **Column 1 General** rate even when the query resolved to Column
+2, because that is the column the schedule's own sentence names. A base rate that is a sentence
+rather than a number yields `met = None` — an unknown, never a pass.
+
+Evidence the extraction reads the schedule rather than a pattern in it: the 31 come in
+**complementary pairs**, `less than 15` / `equal to or greater than 15` at three thresholds, and
+each pair partitions the space exactly. `9903.05.38` (`no_change`, column 1 ≥ 10%) and
+`9903.05.39` (`replace` 10%, column 1 < 10%) are one such pair — a "top up to 10%" structure, and
+reading the condition is what makes the two mutually exclusive here as they are in the schedule.
+
+**Tradeoff.** One condition kind is modelled and it is the one that is regular. Conditions about
+the **goods** — *"footwear with vulcanized uppers of neoprene measuring 7 mm in thickness"*,
+in-quota versus over-quota under a tariff-rate quota — are not modelled and cannot be: they are
+questions about a shipment, and no amount of parsing answers them. Those stay unknowns. The
+regex is also narrow enough that a differently-worded threshold in the next revision extracts
+nothing and fails silent rather than loud, which is the weaker of the two failure modes.
+
+**Feeds.** SUBMISSION.md §2, §5
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
 numbered entry above once decided — do not decide them here.
 
-- **P-g · Part 3 is intended to be an agent.** Stated 2026-08-22, ahead of Part 2 and
-  explicitly not a constraint on it. It may amend the earlier choice of a rate explainer
-  as the Part 3 shape, so revisit that before designing Part 3 — and check then whether an
-  agent wants anything the schema does not already give a UI, such as text worth
-  retrieving over rather than joining.
+- **P-l · Stacking order between a replacement and an additional duty.** `combine` applies
+  layers in the order `APPLICABLE` returns them, which is `ORDER BY r.hts` — so a total can
+  depend on which provision has the lower heading number. Measured over 2,160 sampled
+  queries: 531 carry a `replace`, and **346 carry a `replace` and an `add` together**. Worse,
+  a query can carry two `replace` provisions — `9903.45.01` (14%, in-quota) and `9903.45.02`
+  (30%, over-quota) both reach `8450.20.00.10`, and the higher heading silently wins. The
+  HTSUS does not state stacking order (that is already the `stacking` unknown), and D-0057
+  shows the schedule sometimes prevents the question instead by making provisions mutually
+  exclusive on a condition. Decide between defining an order and documenting it, or reporting
+  a range with an unknown as D-0049 does for origin-scoped provisions. **Until decided, the
+  totals on affected queries are order-dependent and that is not disclosed on screen.**
+
+- ~~**P-g · Part 3 is intended to be an agent.**~~ Settled by **D-0053**: it is a document.
+  The two uses of a model are both paraphrase shown beside the text they paraphrase, and
+  nothing generative touches the duty stack.
 - **P-h · Alternatives versus stacking.** Several 9902 provisions on one base code are
   treated as mutually exclusive alternatives, because a shipment is one substance and their
   descriptions are disjoint — but **nothing in the data states this**, so it is an

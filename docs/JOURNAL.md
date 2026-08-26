@@ -1405,3 +1405,381 @@ groups, and the note references in the evidence.
 code" and "1 provision take their scope" — both from writing `{n} thing{s}` and forgetting the
 verb agrees too. Caught by reading the rendered text, not by types or tests, which is the same
 lesson as the `--` dashes an hour earlier: the only check for prose is looking at it.
+
+## 2026-08-26 — Part 3, Step 5: the two sentences no source wrote
+
+**What this step is.** Two things the app wants are judgements, not facts: a plain-English
+restatement of a provision, and a label saying what a prose U.S. note *does*. Both are
+paraphrase, both are jobs a model does well, and both had to be added without weakening the
+one claim this build rests on — that every figure on screen traces to a row.
+
+**The decision that made it safe** is where the model call happens. Not at request time
+(latency, cost, two readers told different things, no key means no app) and not in the parse
+workflow (which would need network and a secret, exactly what its separation from Part 1
+prevents). Offline, into a JSON file, committed: `workflows/build_interpretation.py` writes
+`workflows/seed/*.json`, and `materialize` only loads them. So the parse run needs no key, two
+parses of one release produce identical rows, and what a reviewer diffs is the model's actual
+output rather than a claim about it. D-0050.
+
+Each record carries the SHA-256 of the text it was written from and the loader recomputes it.
+That is the whole answer to the brief's *"how do you keep it true when the tables under it
+change?"* — and it is checkable rather than asserted:
+
+```
+poisoned one record's digest, invented a note the release does not contain, reloaded:
+  {'roles': {'offered': 157, 'loaded': 155, 'stale': 2}}
+
+  stale_note_role  ('us_note','III','13',None)   source text changed since this was written
+  stale_note_role  ('us_note','III','999',None)  written for a record this release does not contain
+
+restored from the real artifact:
+  {'roles': {'offered': 157, 'loaded': 157, 'stale': 0}}
+```
+
+The 157/157 with zero stale is also the determinism check passing: the artifacts were built
+against one parse, the database was then wiped by `./setup.sh` and rebuilt from the payloads,
+and every digest still matched.
+
+**Measured reliability of the model, note pass.** 167 notes, **157 kept, 10 rejected by the
+checks in code** — not by reading them:
+
+```
+us_note|III|32|a   introduces 1.36, 25, 28, absent from the source
+us_note|III|31|e   introduces 31
+us_note|XIX|3      introduces 2025          us_note|XV|6|a   introduces 2024
+us_note|XIX|4|a    introduces 2027          us_note|XV|7|a   introduces 2024
+us_note|XIX|4|b    introduces 2027          us_note|XV|7|b   introduces 2024
+us_note|XVIII|3    introduces 2020
+us_note|XV|9       not one of the notes asked about
+```
+
+Six of the ten supplied a year the note never states — the model completing "January 1" from
+context, which is the most plausible-looking way to be wrong about a tariff. One invented three
+numbers outright. One answered about a note that was not in the batch. **All ten read
+perfectly.** Nine lines of deterministic checking caught 6% of answers that prose review would
+not have.
+
+The rule pass, run afterwards: **3,098 provisions, 3,060 kept, 38 rejected, 0 batches
+lost**, across 124 batches with two retries that both succeeded. All 38 rejections turned
+out to be defects in my check rather than in the answers — see the entry below.
+
+**Two prompt defects found by reading the output, not by any test.**
+
+The first eight summaries came back naming the goods and saying nothing about the duty — which
+is the half a reader came for. Cause: the rate is not in `full_description`, it is a column
+beside it, so the model could not have said. Fixed by sending `rate_text` and the operator
+alongside, and by explaining in the prompt what `additive` and `no_change` mean.
+
+The second is more interesting. `9903.91.01` reads *"as provided for in subdivision (b) of
+U.S. note 31"*, and the summary came back as *"Goods listed in U.S. note 31"*. Dropping the
+subdivision widens the provision from 349 codes to 412 — **the same defect the parser had, and
+D-0037 exists to record fixing it.** A paraphrase can reintroduce a bug the schema already
+solved. Fixed with an explicit constraint, verified on five provisions that cite subdivisions:
+
+```
+9903.88.01 — Chinese articles listed in U.S. note 20(a) and 20(b): 25% on top of the normal duty.
+9903.91.01 — Chinese articles listed in U.S. note 31(b): 25% on top of the normal duty.
+9903.91.06 — Chinese articles listed in U.S. note 31(g): 25% on top of the normal duty.
+```
+
+**Two transports, because this machine has no API key.** `env`, `workflows/.env` and the
+Claude settings all lack one, so the SDK path could not have been run here and the artifacts
+would have shipped ungenerated. `workflows/llm.py` picks the Anthropic SDK when
+`ANTHROPIC_API_KEY` is set and shells out to `claude -p --output-format json` otherwise
+(D-0052). Everything in `seed/` was built through the CLI; **the API transport is written and
+typed but has not produced a row**, which is stated in the decision rather than left for a
+reader to find. One trap earned a test: the CLI reports a model-side failure *in its JSON body
+with exit code 0*, so a return-code check alone would have written "I cannot help with that"
+into the artifact as a summary.
+
+**What the note labels turned out to be worth.** The distribution is not what "we could not
+parse this note" implies:
+
+```
+condition 73 · exclusion_list 31 · list_of_goods 28 · administrative 16 · definition 9
+```
+
+Only 28 of 157 are lists the parser arguably should have found. The other 129 have no code
+list to extract, and the app can now say which is which. The best case is `9903.88.04` — the
+Section 301 provision that matches Chinese steel on country alone, with no code evidence at
+all. Its card now reads *"Lists goods · machine-read: Lists categories of Chinese products
+subject to additional 25% duty with exclusions"*, which is exactly why it sits in the
+origin-scoped bucket rather than in the total (D-0049).
+
+**A defect I introduced and caught in the same hour.** `load_interpretation` did not clear its
+own stage's `parse_issue` rows before inserting, which the other four loaders all do. A second
+run of the same release would have doubled this stage's residue — in the one table whose whole
+job is to be trustworthy about what failed. Found while restoring the database after the
+staleness test above, because the poisoned run's two rows were still there. Fixed.
+
+**Schema.** `rule_summary` and `note_role`, both keyed to their subject with the digest, model
+and prompt version beside the sentence. `parse_issue.stage` gained `materialize`.
+`note_role.source_truncated` records that the longest note bodies (912,964 characters at the
+extreme) were sent as their first 6,000 — a label written from an eighth of a note is a weaker
+claim than one written from all of it, and the difference is on screen rather than assumed.
+
+Adding `rule_summary` made the parser fail loudly on the next run:
+
+```
+FeatureNotSupported: cannot truncate a table referenced in a foreign key constraint
+DETAIL:  Table "rule_summary" references "rule".
+```
+
+That is D-0025 working as designed, for the second time — a derived table nobody registered
+cannot silently survive a run.
+
+**Verification.**
+
+```
+setup.sh + parse from empty, no artifacts present:   ran clean, app renders verbatim text
+  → "a missing artifact is a supported state" is exercised, not just claimed
+parse with note_roles.json present:                  157 loaded, 0 stale
+workflows tests                                      123 passed (8 new)
+api tests                                            15 passed
+tsc --noEmit                                         clean
+/duty/7208.51.00.30?country=DE   Free,  2 unknowns   (control: nothing applies)
+/duty/7208.51.00.30?country=CN   25% .. up to 50%,  4 unknowns
+/duty/7208.51.00.30?country=RU   Column 2 20% .. up to 220%
+/duty/2922.49.30.00?country=DE   10%,  4 alternative reductions,  8 unknowns
+```
+
+**Agent notes.** I piped both build runs through `| tail -30`, which buffers the whole stream —
+so for the fifty minutes they ran there was no interim output at all, and no way to see a
+batch retrying. The progress printer I wrote was useless for exactly the case it existed for.
+Second, I wrote `2,940` as the `rule_summary` count into `SCHEMA.md` before the build had
+finished, as a placeholder. A placeholder that looks like a measurement is worse than a blank,
+and it is the same failure as measuring the wrong query: it reads as evidence.
+
+## 2026-08-26 — Removing the machine-written layer, and what it cost to learn
+
+The entry above stands as written; this one records what happened to what it describes.
+The two model-written tables are gone. Not because they were wrong — because they restated
+what the page had already said.
+
+**The audit that preceded the decision.** Before removing anything I went looking for
+evidence the summaries were unreliable, expecting to find some. I did not:
+
+```
+3,094 summaries checked against the rate_kind operator each one describes:
+  free / additive / replace     zero cross-contamination between the three
+  135 'none'-rate summaries matching /no duty/
+     → sampled: "no duty rate specified", which is correct for a row stating no rate
+  2 'no_change' summaries saying "duty-free"
+     → 9903.01.04 reads "Articles that are entered free of duty under general note 11"
+       the sentence is faithful to the provision
+```
+
+That matters more than it looks. I had a hypothesis — *the number check validates numbers,
+not claims, so wrong claims must be getting through* — and I nearly reported it as a finding
+before running it. It did not hold. **The argument for removal is redundancy, and saying so
+plainly is worth more than a stronger-sounding argument that the evidence does not support.**
+
+**The redundancy, concretely.** A duty card already carries:
+
+```
+9903.91.01    + 25%    [Section 301 — China · editorial]
+Why this is in your answer
+  · The provision points at U.S. note 31(b), whose list includes 7208.51
+  · The provision names China as the country of origin
+```
+
+and then said: *"Chinese articles listed in U.S. note 31(b): 25% on top of the normal
+duty."* The formula strip, the programme chip and the evidence lines had done the work
+already. An hour of wall clock and $6.50 bought a fourth telling.
+
+**What the hour actually taught**, kept because it would otherwise have to be relearned:
+
+```
+one CLI call, 25 provisions:
+  wall            35.3s
+  ttft            27.6s      ← 80% of the call is before the first token
+  output          3,898 tokens, of which 2,862 are thinking
+  cache_create    15,421 every single call — a fresh process never reads a warm cache
+  cost            $0.0520  ×124 batches ≈ $6.50, not the ~$1 estimated
+```
+
+Two flags were measured against that baseline. `--effort low` came back at **14.3 s** with
+936 thinking tokens — 2.5× faster — but its one sampled reply did not begin with the JSON
+array, so it was not adopted mid-run. Replacing Claude Code's system prompt with a two-line
+one was **worse, not better**: 90.8 s and 9,626 thinking tokens. The scaffolding that costs
+15,000 cached tokens is also what keeps the model terse.
+
+**The check that was wrong in the safe direction.** The first version compared numbers by
+their *printed* form, so `5.0%` → `5%`, `1,000` → `1000` and `$20.00` → `$20` all read as
+fabrications: **38 correct summaries rejected**. Comparing by value recovered 34. A regex
+anchored on a leading digit never saw the schedule's `.4mm`, which recovered one more. The
+last 4 were the model rewriting `6-1/2 digits` as `6.5` — arithmetic the check cannot verify,
+correctly refused. Failing conservative is right; failing conservative *and unmeasured* meant
+38 rows were silently missing and I only found out by counting the artifact against the table.
+
+**Two defects I shipped and caught within the hour.** `load_interpretation` did not clear its
+own stage's `parse_issue` rows the way the other four loaders do, so a second run of the same
+release would have doubled this stage's residue — in the one table whose job is to be
+trustworthy about failure. And `--only` **overwrote** the artifact instead of merging into it,
+which made the flag worse than useless: it looked like a repair and was a deletion of 3,056
+records. Both fixed, both with tests, and both now deleted along with the feature.
+
+**The removal itself.** `./cleanup.sh` then `./setup.sh` rather than hand-dropping the two
+tables — `setup.sh` only drops what it creates, so a *removed* table survives a schema reset
+and would have lingered in my database while being absent from a grader's. Worth knowing:
+the reset is a reset of the file, not of the database.
+
+Verified from an empty database afterwards:
+
+```
+14 tables · parse from empty ran clean
+hts_base 26,246 · rule 3,098 · note 345 · rule_note 977 · note_subheading 48,053
+rule_base_match 16,958 · note_base_match 136,325 · rule_coverage 2,825 · parse_issue 848
+workflows tests 115 passed   api tests 15 passed   tsc --noEmit clean
+
+/                                            200  0.09s
+/search?q=hot-rolled+steel+plate&country=CN  200  0.23s
+/duty/7208.51.00.30?country=CN&value=100000  200  0.16s   25% .. up to 50%  ·  $25,000
+/duty/2922.49.30.00?country=DE&value=50000   200  0.24s
+/duty/7208.51.00.30?country=DE               200  0.23s   Free, nothing applies
+/duty/7208.51.00.30?country=RU               200  0.22s   Column 2, 20% .. up to 220%
+/rule/9903.91.01  200  0.21s      /note/148        200  1.20s (cold) / 0.15s
+/rule/9999.99.99  404             /note/999999     404      /duty/9999.99.99.99  404
+```
+
+`grep -riE 'anthropic|openai|claude|llm|gpt|embedding' api/ app/src` returns nothing, and
+the API's runtime dependencies are FastAPI, uvicorn, psycopg and pycountry. The product
+contains no model output of any kind.
+
+**Agent notes.** The honest summary of my part in this: I proposed the feature, built it,
+and it worked — and it was still the wrong thing to build, because I did not ask what the
+page already said before adding a fourth way of saying it. The user's read of it as marginal
+was correct and mine was not. Second, when asked to justify keeping or dropping it, my first
+instinct was to reach for a correctness argument; the audit refuted it, and reporting that
+refutation is the only reason the redundancy argument is trustworthy.
+
+## 2026-08-26 — A reported wrong answer, and what it was actually caused by
+
+A user brought a case: men's knitted cotton T-shirts from China, `6109.10.00.12`. Base 16.5%,
+Section 301 List 4A +7.5%. The app said **17.5%**. Reproduced immediately:
+
+```
+BASE   16.5%                      TOTAL 17.5%
+  9903.05.31  add      +12.5%     IEEPA reciprocal, China, via note 52
+  9903.05.39  replace  10%        ← replaced the 16.5% base
+  9903.88.15  add      +7.5%      Section 301 List 4A, found correctly
+```
+
+Their diagnosis was that the parser is too rigid and needs a model to check eligibility. That
+turned out to be the wrong reading of a real bug, and the truth is worse and cheaper to fix.
+
+**The parser had already caught it.** `9903.05.39` is not an FTA or quota rate — it is EU-only:
+
+```
+"articles the product of a member state of the European Union, with an ad valorem
+ (or ad valorem equivalent) rate of duty under column 1 less than 10 percent"
+```
+
+and `parse_issue` held, for exactly the three provisions in that family:
+
+```
+9903.05.38 / .39 / .97   keys on origin but names no country:
+                         'a member state of the European Union'
+```
+
+`countries.py` even carried `NOT_A_COUNTRY = {"european union"}` with a comment saying a NULL
+code "is the right answer rather than a failure". It was. **The app then read the resulting
+silence as permission** — its veto was "no `rule_country` rows means no origin restriction" —
+and applied an EU provision to a Chinese shipment. The honesty table did its job and nothing
+downstream read it.
+
+That is the lesson worth keeping from this whole session: **recording a limitation is only
+half of handling it.** `parse_issue` has been treated as a report for humans; here it held a
+fact the query needed.
+
+**The blast radius was measured, not guessed.** 36 `unnamed_country` issues, six phrase groups,
+and the kind conflates two opposite meanings:
+
+```
+'any country'                                 18   universal   -> must pass the veto
+'any country or area including the US'         9   universal   -> must pass
+'a member state of the European Union'         3   a bloc      -> 27 named origins
+'any country not exempt under note 41(c)'      3   bounded     -> must not pass
+'any country identified in general note 3(b)'  2   bounded     -> must not pass
+'any country determined by CBP ... transshipped' 1 bounded     -> must not pass
+```
+
+Failing closed on all 36 would have dropped the reciprocal baseline from every query. Failing
+open, which is what shipped, applied EU rates to everyone.
+
+**Two fixes, both deterministic, neither needing a model.** `rule.origin_scope` with four
+values (D-0056), and `rule_condition` for the eligibility terms provisions state about the base
+rate (D-0057). Results:
+
+```
+6109.10.00.12  CN   17.5%  ->  36.5%      (16.5 base + 12.5 + 7.5)
+6109.10.00.12  DE   10%    ->  16.5%      (the EU provision was wrong for EU goods too)
+rule_country   422   ->  503              (+81, the EU expanded into 27 members x 3)
+rule_condition   -   ->   31
+```
+
+The German case is the one worth noticing: the provision was wrong even for the origin it was
+written for, because 16.5% is not "less than 10 percent". Fixing origin alone would have left
+that understatement in place.
+
+**A wrong hypothesis I checked before acting on it.** Note 52(a) says headings
+9903.05.20–9903.05.84 "impose **additional** ad valorem rates of duty", so I suspected the
+parser had misread `9903.05.39`'s bare `10%` as `replace` when it should be additive. It had
+not. The complementary heading settles it:
+
+```
+9903.05.38  no_change  "The duty provided in the applicable subheading"   column 1 >= 10%
+9903.05.39  replace    "10%"                                             column 1 <  10%
+```
+
+That is a "top up to 10%" structure and `replace` is right. Two provisions, partitioning the
+space on a condition — which is the second finding: **the schedule frequently prevents a
+stacking ambiguity by making provisions mutually exclusive**, and reading the condition is what
+reproduces that here.
+
+**The stacking question, measured.** A user asked what decides the order when a `replace` and an
+`add` both apply, since `replace → Free` then `+5%` and the reverse give different answers. The
+honest answer is that nothing decides it: `combine` applies layers in the order `APPLICABLE`
+returns them, which is `ORDER BY r.hts`. The docstring says "in the order they should be read"
+and no caller ever made that decision. Swept 2,160 real queries:
+
+```
+queries run                    2,160
+with a replace in the total      531
+replace AND add in one total     346    <- 16%, order-dependent
+```
+
+and worse, a query can carry **two replaces**: `9903.45.01` (14%, in-quota) and `9903.45.02`
+(30%, over-quota) both reach `8450.20.00.10`, and the higher heading silently overwrites the
+lower. Those two are a tariff-rate quota pair — which one applies depends on how much has been
+imported this year, a number in no source here. Recorded as **P-l**, undecided, rather than
+patched with a guess.
+
+**What the reported case still does not agree with.** The user expected 24.0%; the fixed answer
+is 36.5%. The difference is `9903.05.31`, +12.5% IEEPA reciprocal on China, which note 52(a)
+states is additional and stacks. It carries no date, no status, and note 52 does not contain the
+word "suspend". So from these three sources it applies. The 24.0% presumably reflects a
+suspension published as an executive order or a CBP message — which is precisely what the
+"What this can't tell you" panel exists to point at, and is not a defect in the reading.
+
+**Verification.**
+
+```
+setup.sh + parse from empty:  rule_country 503 · rule_condition 31 · parse_issue 848
+origin_scope   none 2,667 · named 407 · any 18 · unresolved 6
+workflows tests 126 passed (11 new)   api tests 15 passed   tsc --noEmit clean
+/duty/6109.10.00.12?country=CN   36.5%  ceiling 61.5%
+/duty/6109.10.00.12?country=DE   16.5%  · 9903.05.39 shown under "Ruled out by their own
+                                          wording" with the sentence that ruled it out
+/duty/7208.51.00.30?country=CN   25% .. up to 50%   (unchanged)
+/duty/7208.51.00.30?country=DE   Free               (unchanged)
+```
+
+**Agent notes.** I introduced a bug inside the fix and caught it by reading a count: expanding
+the EU bloc, I appended ISO **codes** to a list of country **names**, so 81 rows each raised
+"no ISO 3166 code for 'AT'" and `parse_issue` jumped 39 → 120. Nothing failed; the number was
+the only symptom. Second, I nearly reported the `replace`/`additive` operator as a fourth bug
+on the strength of one sentence in note 52(a), and the complementary heading refuted it — the
+same shape as the audit two entries above, where a hypothesis I liked did not survive being
+checked. Third, after adding two new buckets to the API I had to remember to render them;
+shipping data the UI ignores is the exact failure this entry is about.

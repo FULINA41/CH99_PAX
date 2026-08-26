@@ -6,7 +6,7 @@ from typing import Any
 from db import rows
 from duty import queries
 from duty.compute import term
-from models import CitedNote, Effectivity, Evidence, Layer, Programme
+from models import CitedNote, Condition, Effectivity, Evidence, Layer, Programme
 
 
 def applicable(
@@ -16,6 +16,7 @@ def applicable(
     *,
     declared_value_usd: Decimal | None = None,
     quantity: Decimal | None = None,
+    col1_pct: Decimal | None = None,
 ) -> list[Layer]:
     """Every Chapter 99 provision that reaches this good from this origin, with its reasons.
 
@@ -33,6 +34,9 @@ def applicable(
         on_date: The date each provision's standing is judged against.
         declared_value_usd: Shipment value, for the money on each term.
         quantity: Shipment quantity, for specific duties.
+        col1_pct: The good's **Column 1 General** ad valorem rate, for judging the conditions
+            provisions state. Column 1 even when the query resolved to Column 2, because that
+            is the column the schedule's own sentence names.
 
     Returns:
         One Layer per provision, ordered by heading.
@@ -47,6 +51,11 @@ def applicable(
     identifiers = _grouped(rows(queries.IDENTIFIERS, {"rules": codes}), "rule_hts", "value")
     excluded = _grouped(rows(queries.EXCLUSIONS, {"rules": codes}), "source_hts", "target_hts")
     coverage = {row["rule_hts"]: row["codes"] for row in rows(queries.COVERAGE, {"rules": codes})}
+    conditions: dict[str, list[Condition]] = defaultdict(list)
+    for row in rows(queries.CONDITIONS, {"rules": codes}):
+        conditions[row["rule_hts"]].append(Condition(
+            kind=row["kind"], operator=row["operator"], value=row["value"],
+            verbatim=row["verbatim"], met=_met(row["operator"], row["value"], col1_pct)))
     cited: dict[str, list[CitedNote]] = defaultdict(list)
     seen_notes: set[tuple[str, int | None, str | None]] = set()
     for row in rows(queries.CITED_NOTES, {"rules": codes}):
@@ -66,6 +75,8 @@ def applicable(
         Layer(
             hts=row["hts"],
             description=row["full_description"],
+            origin_scope=row["origin_scope"],
+            conditions=conditions.get(row["hts"], []),
             scope=row["scope"],
             term=term(
                 kind=row["rate_kind"],
@@ -87,6 +98,12 @@ def applicable(
         )
         for row in found
     ]
+
+
+def _met(operator: str, value: Decimal, col1_pct: Decimal | None) -> bool | None:
+    if col1_pct is None:
+        return None
+    return col1_pct < value if operator == "lt" else col1_pct >= value
 
 
 def standing(row: dict[str, Any], on_date: date) -> Effectivity:

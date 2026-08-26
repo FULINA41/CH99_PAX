@@ -36,8 +36,20 @@ FROM hts_base b WHERE b.hts = %(hts)s
 # 31(b). Querying the first table alone under-reports by most of subchapter III (D-0036).
 #
 # The country filter is a veto, not a third path: a provision that names China is not about a
-# Vietnamese shipment however its codes match. A provision naming no country is not filtered,
-# because the reciprocal baseline genuinely does apply to everyone.
+# Vietnamese shipment however its codes match.
+#
+# The veto reads rule.origin_scope, not the presence of rule_country rows, and the difference
+# is a wrong answer. "articles the product of any country" and "articles the product of a
+# member state of the European Union" both leave rule_country empty when the extractor cannot
+# name a bloc, and they mean opposite things. Reading emptiness as "no restriction" put
+# 9903.05.39 -- EU only, replaces the base rate with 10% -- on a Chinese T-shirt, and took its
+# 16.5% base down to 10%. The parser had recorded the failure as a parse_issue nobody read.
+# D-0056.
+#
+#   'none'/'any'   not filtered; the provision reaches every origin
+#   'named'        must name the queried country
+#   'unresolved'   bounded by a set this data cannot enumerate; kept, and the caller puts it
+#                  where it can be read rather than summed
 APPLICABLE = """
 WITH reached AS (
     SELECT rule_hts FROM rule_base_match WHERE base_hts = %(hts)s
@@ -49,21 +61,19 @@ WITH reached AS (
 named AS (
     SELECT rule_hts FROM rule_country
     WHERE relation = 'product_of' AND country_code = %(country)s
-),
-origin_scoped AS (SELECT DISTINCT rule_hts FROM rule_country)
+)
 SELECT r.hts, r.description, r.full_description, r.scope,
        r.rate_text, r.rate_kind, r.rate_ad_valorem_pct,
        r.rate_specific_amount, r.rate_specific_unit,
        r.additional_duty_text, r.additional_duty_pct,
        r.additional_duty_amount, r.additional_duty_unit,
-       r.effective_from, r.effective_to, r.status, r.status_note,
+       r.effective_from, r.effective_to, r.status, r.status_note, r.origin_scope,
        p.heading_prefix, p.label, p.statute, p.agency, p.evidence, p.reference_url
 FROM rule r
 LEFT JOIN trade_programme p ON left(r.hts, 7) = p.heading_prefix
 WHERE (
         r.hts IN (SELECT rule_hts FROM reached)
-        AND (r.hts NOT IN (SELECT rule_hts FROM origin_scoped)
-             OR r.hts IN (SELECT rule_hts FROM named))
+        AND (r.origin_scope <> 'named' OR r.hts IN (SELECT rule_hts FROM named))
       )
    OR (r.scope = 'by_country_all_goods' AND r.hts IN (SELECT rule_hts FROM named))
 ORDER BY r.hts
@@ -179,4 +189,14 @@ SELECT b.hts, b.full_description, b.units, b.rate_text, b.rate_kind, b.rate_ad_v
 FROM hts_base b
 WHERE b.full_description %% %(q)s
 ORDER BY rank DESC LIMIT %(limit)s
+"""
+
+
+# The eligibility conditions a matched provision states about the base rate. Evaluated in
+# Python against the classified good's Column 1 rate, because the judgement has to be shown
+# on screen next to the sentence it came from, not buried in a WHERE clause (D-0057).
+CONDITIONS = """
+SELECT rule_hts, kind, operator, value, verbatim
+FROM rule_condition WHERE rule_hts = ANY(%(rules)s)
+ORDER BY rule_hts, kind, value
 """

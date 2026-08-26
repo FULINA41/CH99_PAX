@@ -63,6 +63,7 @@ erDiagram
 
     rule            ||--o{ rule_edge       : "cites / excludes (as printed)"
     rule            ||--o{ rule_country    : "product of / excluded"
+    rule            ||--o{ rule_condition   : "applies only if"
     rule            ||--o{ rule_identifier : "CAS number"
     rule            ||--o{ rule_note       : "cites note"
     note            ||--o{ rule_note       : "cited by"
@@ -82,13 +83,14 @@ erDiagram
 | `hts_base` | 26,246 | fact | Chapters 1–97: the codes goods are classified under | Step one of every duty calculation |
 | `rule` | 3,098 | fact | Chapter 99 provisions: what modifies those duties | Step two of every duty calculation |
 | `rule_edge` | 14,229 | fact | The codes a provision names, unresolved | Auditing the matcher; following exclusions |
-| `rule_country` | 422 | fact | The countries a provision names | The moment a user types "China" |
+| `rule_country` | 503 | fact | The countries a provision names | The moment a user types "China" |
 | `rule_identifier` | 1,229 | fact | CAS numbers | Choosing between several provisions on one base code |
 | `note` | 345 | fact | U.S. notes from the PDF | A user asking "on what authority" |
 | `rule_note` | 977 | fact | A provision citing a note | Jumping from a provision to the legal text |
 | `note_subheading` | 48,053 | fact | The codes a list-type note prints | Working out what Section 301 covers |
 | `rule_base_match` | 16,958 | **interpretation** | The base rows a provision names itself | The main query once a user supplies a code |
 | `note_base_match` | 136,325 | **interpretation** | The base rows a note's list reaches | The other half of that query, joined through `rule_note` |
+| `rule_condition` | 31 | fact | The eligibility terms a provision states about the base rate | Deciding whether a matched provision actually covers these goods (D-0057) |
 | `rule_coverage` | 2,825 | derived | How many base codes a provision reaches, by each path | A duty page, which needs it for every provision at once (D-0047) |
 | `trade_programme` | 7 | **editorial** | Which trade action a heading family belongs to | Naming "Section 301" on screen, which the schedule never does (D-0045) |
 | `parse_issue` | non-empty | honesty | Everything that parsed into nothing | Self-review before submission; telling a user "I could not read this one" |
@@ -268,7 +270,7 @@ Chinese goods by 25 points.
 
 ---
 
-## 7. `rule_country` — country of origin
+## 7. `rule_country` and `rule.origin_scope` — country of origin
 
 | Column | Meaning | When it is used |
 | --- | --- | --- |
@@ -284,7 +286,76 @@ this data cannot answer.
 
 ---
 
-## 8. `rule_identifier` — which goods, when the code cannot say
+### `rule.origin_scope` — and why the rows alone are not enough
+
+`rule_country` answers *which* origins. It cannot answer *whether the provision limits origin
+at all*, because two opposite cases both leave it empty:
+
+```
+"articles the product of any country"                       reaches every origin
+"articles the product of a member state of the European     reaches 27
+ Union"                                                     — and the extractor names none
+```
+
+Reading emptiness as "no restriction" put an EU-only provision on a Chinese T-shirt and replaced
+its 16.5% base rate with 10%. The parser had recorded the failure as a `parse_issue` that
+nothing read. D-0056.
+
+| `origin_scope` | Rows | Meaning | What the duty query does |
+| --- | ---: | --- | --- |
+| `none` | 2,667 | Does not key on origin | Not filtered |
+| `any` | 18 | Keys on origin, reaches all of them | Not filtered |
+| `named` | 407 | `rule_country` holds the answer, blocs expanded | Must name the queried country |
+| `unresolved` | 6 | Bounded by a set this data cannot enumerate | Shown, counted only towards the ceiling |
+
+The six `unresolved` are *"any country not exempt under U.S. note 41(c)"*, *"identified in
+general note 3(b)"* and *"determined by CBP to have been transshipped"* — each a list living in
+a document none of the three sources contains.
+
+A **bloc is not an unknowable**: the European Union's membership is published, so
+`bloc_members` expands it into 27 real `rule_country` rows and those provisions become `named`
+rather than a shrug. That is the +81 rows between 422 and 503.
+
+---
+
+## 8. `rule_condition` — the terms a provision sets on itself
+
+`rate_kind` says what a provision does, `rule_country` says which origins, `effective_from` says
+when. This says **on what terms** — the fourth question, and unmodelled until a provision that
+covers goods *"with an ad valorem rate of duty under column 1 less than 10 percent"* was applied
+to a good at 16.5%. D-0057.
+
+| Column | Meaning | When it is used |
+| --- | --- | --- |
+| `rule_hts` | The provision | |
+| `kind` | `col1_rate` — one kind so far | Room for a second without a migration |
+| `operator` | `lt` \| `gte` | The comparison |
+| `value` | The threshold: 10, 12.5 or 15 | |
+| `verbatim` | The condition **as printed** | **The reason for the table.** A provision left out of a total has to quote the words that left it out; the duty page renders this under "Ruled out by their own wording" |
+
+Judged against the good's **Column 1 General** rate even on a Column 2 query, because that is
+the column the sentence names. A base rate that is prose rather than a number leaves the
+condition unjudged — an unknown, never a pass.
+
+The 31 come in **complementary pairs** at three thresholds, which is the evidence the extraction
+reads the schedule rather than a pattern in it:
+
+```
+9903.05.38  no_change  "The duty provided in the applicable subheading"   column 1 >= 10%
+9903.05.39  replace    "10%"                                             column 1 <  10%
+```
+
+A "top up to 10%" structure — and the pair is **mutually exclusive by construction**. Reading
+the condition is what reproduces that here, and it removes a whole class of stacking ambiguity
+rather than only correcting one rate.
+
+Not modelled, and not modellable: conditions about the **goods**. *"Footwear with vulcanized
+uppers of neoprene measuring 7 mm in thickness"*, or in-quota versus over-quota under a
+tariff-rate quota, are questions about a shipment. They stay unknowns (§15).
+
+---
+
+## 9. `rule_identifier` — which goods, when the code cannot say
 
 | Column | Meaning | When it is used |
 | --- | --- | --- |
@@ -311,7 +382,7 @@ the choice becomes a lookup (D-0019).
 
 ---
 
-## 9. `note`, `rule_note`, `note_subheading` — the PDF
+## 10. `note`, `rule_note`, `note_subheading` — the PDF
 
 973 provisions cite a U.S. note, across 35 distinct numbers, and many take their scope
 from it rather than from codes they name. `9903.88.01` covers "the subheadings enumerated in
@@ -363,7 +434,7 @@ every code is exactly 10 characters.
 
 ---
 
-## 10. `rule_base_match` and `note_base_match` — the interpretation layer
+## 11. `rule_base_match` and `note_base_match` — the interpretation layer
 
 The only *derived* tables here. Drop both and they rebuild from `rule_edge` and
 `note_subheading` without re-reading any prose.
@@ -417,7 +488,7 @@ be a list. The final split is 2,914 / 67 / 117.
 
 ---
 
-## 11. `rule_coverage` and `trade_programme` — derived, and editorial
+## 12. `rule_coverage` and `trade_programme` — derived, and editorial
 
 Two small tables that are not parsed from anything, and are not the same kind of thing.
 
@@ -456,7 +527,7 @@ guessed: `9903.89` and `9903.90` have no label. D-0045.
 
 ---
 
-## 12. `parse_issue` — what did not parse
+## 13. `parse_issue` — what did not parse
 
 | Column | Meaning | When it is used |
 | --- | --- | --- |
@@ -483,7 +554,7 @@ Recorded rather than dropped (D-0017).
 
 ---
 
-## 13. A query end to end
+## 14. A query end to end
 
 **"Steel from China, `7208.51.00`, $100,000."**
 
@@ -517,7 +588,7 @@ different. The schema cannot pick one; only knowing the substance can, which is 
 
 ---
 
-## 14. What this schema deliberately cannot answer
+## 15. What this schema deliberately cannot answer
 
 | Question | Why not |
 | --- | --- |

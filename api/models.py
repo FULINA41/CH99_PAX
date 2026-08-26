@@ -25,6 +25,24 @@ class Programme(BaseModel):
     editorial: Literal[True] = True
 
 
+class Condition(BaseModel):
+    """An eligibility term a provision states about the base rate of the goods it covers.
+
+    `9903.05.39` reaches goods "with an ad valorem rate of duty under column 1 less than 10
+    percent". Judged here rather than filtered in SQL, because the answer has to be shown
+    beside the sentence it came from: a provision left out of your total should say which of
+    its own words left it out. D-0057.
+    """
+
+    kind: Literal["col1_rate"]
+    operator: Literal["lt", "gte"]
+    value: Decimal
+    verbatim: str = Field(description="The condition as the schedule prints it")
+    # None when the base rate is a sentence rather than a number, so the condition can be
+    # neither met nor failed -- an unknown, never a pass.
+    met: bool | None = None
+
+
 class Evidence(BaseModel):
     """Why a provision is in this answer at all.
 
@@ -93,6 +111,10 @@ class Layer(BaseModel):
 
     hts: str
     description: str
+    # How the provision limits origin. 'unresolved' means it is bounded by a set this data
+    # cannot enumerate, so whether it reaches your shipment is not answerable here. D-0056.
+    origin_scope: Literal["none", "any", "named", "unresolved"] = "none"
+    conditions: list[Condition] = Field(default_factory=list)
     # 'by_country_all_goods' is the important one: the provision names the country and limits
     # the goods in prose that could not be turned into codes, so it reaches every import from
     # that origin. 9903.85.67 says "Aluminum articles ... product of Russia" and matches a
@@ -198,6 +220,13 @@ class DutyStack(BaseModel):
     # Named your country, limited the goods in words. Kept out of the total on purpose: their
     # own text says what they cover and this data cannot check it against your shipment.
     origin_scoped: list[Layer] = Field(default_factory=list)
+    # Limited to a set of origins this data cannot enumerate -- "any country not exempt under
+    # U.S. note 41(c)", "identified in general note 3(b)". Whether yours is in it is not
+    # answerable here, so they are shown and counted only towards the ceiling. D-0056.
+    origin_unresolved: list[Layer] = Field(default_factory=list)
+    # Ruled out by the provision's own sentence: it states a condition on the base rate and
+    # this good fails it. A determination, not an unknown, so it is in neither figure. D-0057.
+    not_eligible: list[Layer] = Field(default_factory=list)
     reductions: list[Layer] = Field(default_factory=list)
     exclusions: list[ExclusionGroup] = Field(default_factory=list)
     inactive: list[Layer] = Field(default_factory=list)

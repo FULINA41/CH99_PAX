@@ -1,4 +1,4 @@
-from parsing.countries import country_code, is_not_a_country
+from parsing.countries import bloc_members, origin_scope, country_code, is_not_a_country
 
 
 def test_a_name_the_iso_register_carries_verbatim_resolves():
@@ -35,3 +35,31 @@ def test_the_two_apostrophes_the_schedule_prints_reach_the_same_code():
     # The schedule prints Cote d'Ivoire with a backtick on one line and a curly quote on
     # another; ISO carries the straight one. Normalising is the fix, not two aliases.
     assert country_code("C\u00f4te d`Ivoire") == country_code("C\u00f4te d\u2019Ivoire") == "CI"
+
+
+def test_a_bloc_named_as_an_origin_expands_to_members_the_register_recognises():
+    members = bloc_members("a member state of the European Union")
+
+    assert len(members) == 27
+    assert [name for name in members if country_code(name) is None] == []
+
+
+def test_a_provision_bounded_to_a_bloc_is_named_rather_than_unrestricted():
+    # 9903.05.39 reaches only EU origins. Recorded as unrestricted it replaced the base rate
+    # of a Chinese shipment with 10%.
+    assert origin_scope(list(bloc_members("a member state of the European Union")),
+                        {"a member state of the European Union"}) == "named"
+
+
+def test_a_provision_reaching_every_origin_is_not_filtered_by_country():
+    assert origin_scope([], {"any country"}) == "any"
+
+
+def test_a_qualifier_on_any_country_makes_the_origin_set_unresolved():
+    # "any country not exempt under U.S. note 41(c)" is bounded by a list this data does not
+    # contain, and is the opposite of "any country" however similarly it reads.
+    assert origin_scope([], {"any country not exempt"}) == "unresolved"
+
+
+def test_a_provision_naming_no_origin_at_all_is_not_origin_keyed():
+    assert origin_scope([], set()) == "none"

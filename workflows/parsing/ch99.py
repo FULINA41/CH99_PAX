@@ -3,7 +3,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from parsing.countries import country_code, is_not_a_country
+from parsing.conditions import parse_conditions
+from parsing.countries import (bloc_members, country_code, is_not_a_country,
+                               origin_scope)
 from parsing.db import connect
 from parsing.effectivity import parse_effectivity
 from parsing.issues import Issue, insert_issues
@@ -112,6 +114,7 @@ class Ch99Data:
     rules: list[dict[str, Any]] = field(default_factory=list)
     edges: list[dict[str, Any]] = field(default_factory=list)
     countries: list[dict[str, Any]] = field(default_factory=list)
+    conditions: list[dict[str, Any]] = field(default_factory=list)
     identifiers: list[dict[str, Any]] = field(default_factory=list)
     notes: list[dict[str, Any]] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
@@ -146,7 +149,11 @@ def parse_ch99(path: str, *, source_fetch_id: int | None) -> Ch99Data:
         excluded = _excluded_codes(text)
         referenced = sorted(set(BASE_CODE.findall(text)))
         countries, generic = _countries(text)
+        # A bloc names its members exactly, so it becomes country rows rather than a shrug.
+        for phrase in sorted(generic):
+            countries.extend(bloc_members(phrase))
         window = parse_effectivity(text)
+        conditions = parse_conditions(text)
 
         if rate.kind == "prose":
             data.issues.append(Issue(STAGE, "unparsed_rate", node.hts, rate.text))
@@ -164,6 +171,7 @@ def parse_ch99(path: str, *, source_fetch_id: int | None) -> Ch99Data:
             "description": node.description,
             "full_description": text,
             "scope": _scope(referenced, countries),
+            "origin_scope": origin_scope(countries, generic),
             "rate_text": rate.text,
             "rate_kind": rate.kind,
             "rate_ad_valorem_pct": rate.ad_valorem_pct,
@@ -186,6 +194,11 @@ def parse_ch99(path: str, *, source_fetch_id: int | None) -> Ch99Data:
         for code in excluded:
             data.edges.append({"source_hts": node.hts, "edge_type": "excludes",
                                "target_hts": code})
+        for condition in conditions:
+            data.conditions.append({
+                "rule_hts": node.hts, "kind": condition.kind,
+                "operator": condition.operator, "value": condition.value,
+                "verbatim": condition.verbatim})
         for name in countries:
             code = country_code(name)
             if code is None and not is_not_a_country(name):
@@ -290,7 +303,8 @@ def _tidy(citation: str) -> str:
 
 RULE_COLUMNS = (
     "hts", "heading", "subchapter", "parent_hts", "indent", "description",
-    "full_description", "scope", "rate_text", "rate_kind", "rate_ad_valorem_pct",
+    "full_description", "scope", "origin_scope", "rate_text", "rate_kind",
+    "rate_ad_valorem_pct",
     "rate_specific_amount", "rate_specific_unit", "additional_duty_text",
     "additional_duty_pct", "additional_duty_amount", "additional_duty_unit",
     "effective_from", "effective_to", "status", "status_note",
@@ -299,6 +313,7 @@ RULE_COLUMNS = (
 CHILD_TABLES = (
     ("rule_edge", ("source_hts", "edge_type", "target_hts")),
     ("rule_country", ("rule_hts", "country_name", "country_code", "relation")),
+    ("rule_condition", ("rule_hts", "kind", "operator", "value", "verbatim")),
     ("rule_identifier", ("rule_hts", "kind", "value")),
     ("rule_note", ("rule_hts", "cited_text", "cited_subdivision", "note_id")),
 )
@@ -306,7 +321,7 @@ CHILD_TABLES = (
 # rule is referenced by five tables. Naming them, rather than CASCADEing, means a table
 # added later fails here with its name in the message instead of being quietly emptied.
 TRUNCATE = ("TRUNCATE rule, rule_edge, rule_country, rule_identifier, rule_note, "
-            "rule_base_match, rule_coverage")
+            "rule_condition, rule_base_match, rule_coverage")
 
 
 def load_ch99(data: Ch99Data, *, run_id: str | None, dsn: str | None = None) -> dict[str, Any]:
@@ -323,6 +338,7 @@ def load_ch99(data: Ch99Data, *, run_id: str | None, dsn: str | None = None) -> 
     children = {
         "rule_edge": data.edges,
         "rule_country": data.countries,
+        "rule_condition": data.conditions,
         "rule_identifier": data.identifiers,
         "rule_note": data.notes,
     }

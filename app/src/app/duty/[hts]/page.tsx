@@ -183,6 +183,31 @@ export default async function DutyPage(
         </Section>
       )}
 
+      {stack.origin_unresolved.length > 0 && (
+        <Section
+          id="origin-unresolved" title="Limited to a group of countries this data cannot list"
+          blurb="Counted only towards the upper figure. Each limits itself to a set named in a
+                 document none of the three sources contains — a General Note, a U.S. note's
+                 exemption list, a CBP determination — so whether your origin is inside it is
+                 not answerable here."
+        >
+          {stack.origin_unresolved.map((layer: Layer) => <LayerCard key={layer.hts} layer={layer} />)}
+        </Section>
+      )}
+
+      {stack.not_eligible.length > 0 && (
+        <Section
+          id="not-eligible" title="Ruled out by their own wording"
+          blurb="In neither figure, and this is a finding rather than a caveat: each states a
+                 condition about the base rate of the goods it covers, and this good does not
+                 meet it. The sentence that ruled it out is quoted on each."
+        >
+          {stack.not_eligible.map((layer: Layer) => (
+            <LayerCard key={layer.hts} layer={layer} dimmed />
+          ))}
+        </Section>
+      )}
+
       {stack.exclusions.length > 0 && (
         <Collapsed
           summary={`${stack.exclusions.reduce((n, g) => n + g.provisions.length, 0)} exclusions`}

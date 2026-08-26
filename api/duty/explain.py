@@ -65,10 +65,19 @@ def explain(
                        declared_value_usd, quantity)
 
     found = applicable(hts, country_code, on_date,
-                       declared_value_usd=declared_value_usd, quantity=quantity)
+                       declared_value_usd=declared_value_usd, quantity=quantity,
+                       # Column 1 even on a Column 2 query: the condition names that column.
+                       col1_pct=row["rate_ad_valorem_pct"])
 
     inactive = [layer for layer in found if layer.effectivity.standing != "in_force"]
-    live = [layer for layer in found if layer.effectivity.standing == "in_force"]
+    # A provision whose own sentence rules these goods out is not a duty that might apply; it
+    # is one that does not. Removed before anything else is sorted, and shown with the words
+    # that removed it.
+    not_eligible = [layer for layer in found
+                    if layer.effectivity.standing == "in_force"
+                    and any(c.met is False for c in layer.conditions)]
+    live = [layer for layer in found
+            if layer.effectivity.standing == "in_force" and layer not in not_eligible]
     exclusions = [layer for layer in live if layer.term.operator == "no_change"]
     reductions = [layer for layer in live
                   if layer.hts.startswith(REDUCTION_PREFIX) and layer not in exclusions]
@@ -78,12 +87,18 @@ def explain(
     # Russia" -- in words the parser could not turn into codes, so it reaches every import
     # from that origin, steel included. Summing it would put 200% on the wrong shipment.
     origin_scoped = [layer for layer in rest if layer.scope == "by_country_all_goods"]
-    layers = [layer for layer in rest if layer not in origin_scoped]
+    # Bounded by an origin set this data cannot list, so it belongs with the range rather than
+    # the figure -- the same treatment, for a different reason. D-0056.
+    origin_unresolved = [layer for layer in rest
+                         if layer.origin_scope == "unresolved" and layer not in origin_scoped]
+    layers = [layer for layer in rest
+              if layer not in origin_scoped and layer not in origin_unresolved]
 
     expression, percent, specific, money = combine(
         base.term, layers, declared_value_usd=declared_value_usd)
-    ceiling = combine(base.term, layers + origin_scoped,
-                      declared_value_usd=declared_value_usd) if origin_scoped else None
+    maybe = origin_scoped + origin_unresolved
+    ceiling = combine(base.term, layers + maybe,
+                      declared_value_usd=declared_value_usd) if maybe else None
 
     return DutyStack(
         query=Query(
@@ -100,6 +115,8 @@ def explain(
         column2=other if column == "1-general" else None,
         layers=layers,
         origin_scoped=origin_scoped,
+        origin_unresolved=origin_unresolved,
+        not_eligible=not_eligible,
         reductions=reductions,
         exclusions=_group_exclusions(exclusions),
         inactive=inactive,
@@ -111,8 +128,8 @@ def explain(
             ceiling_amount_usd=ceiling[3] if ceiling else None,
             ceiling_note=CEILING if ceiling else None,
         ),
-        unknowns=_unknowns(base, layers, origin_scoped, reductions, exclusions,
-                           inactive, country_code, hts),
+        unknowns=_unknowns(base, layers, origin_scoped, origin_unresolved, reductions,
+                           exclusions, inactive, country_code, hts),
     )
 
 
@@ -166,8 +183,8 @@ def _group_exclusions(exclusions: list[Layer]) -> list[ExclusionGroup]:
             for (note_id, label), provisions in sorted(grouped.items(), key=lambda kv: kv[0][1] or "")]
 
 
-def _unknowns(base, layers, origin_scoped, reductions, exclusions, inactive,
-              country_code, hts) -> list[Unknown]:
+def _unknowns(base, layers, origin_scoped, origin_unresolved, reductions, exclusions,
+              inactive, country_code, hts) -> list[Unknown]:
     # Only what this query actually raised. Listing all nine every time would train a reader
     # to skip the panel, and the one that matters here would go with it.
     keys: list[str] = ["classification"]
@@ -175,6 +192,8 @@ def _unknowns(base, layers, origin_scoped, reductions, exclusions, inactive,
         keys.append("stacking")
     if origin_scoped:
         keys.append("origin_scoped")
+    if origin_unresolved:
+        keys.append("origin_unresolved")
     if exclusions:
         keys.append("exclusion")
     if len(reductions) > 1:
@@ -198,6 +217,7 @@ def _unknowns(base, layers, origin_scoped, reductions, exclusions, inactive,
         "instrument": [layer.hts for layer in layers],
         "classification": [hts],
         "origin_scoped": [layer.hts for layer in origin_scoped],
+        "origin_unresolved": [layer.hts for layer in origin_unresolved],
         "scope_widened": [layer.hts for layer in layers
                           if any(e.note_precision == "parent_fallback" for e in layer.evidence)],
     }

@@ -16,6 +16,26 @@ ALIASES = {
 # from one that legitimately has no code.
 NOT_A_COUNTRY = frozenset({"european union"})
 
+# A bloc is not a country and it is not unknowable either: the European Union's membership
+# is a published list, so a provision reading "the product of a member state of the European
+# Union" names 27 origins exactly. Recording NULL for it and stopping there is what let
+# 9903.05.39 -- an EU-only provision replacing the base rate with 10% -- apply to a Chinese
+# shipment, because the app reads "no country rows" as "no origin restriction". D-0056.
+EUROPEAN_UNION = (
+    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE",
+    "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+)
+
+BLOCS: dict[str, tuple[str, ...]] = {"a member state of the european union": EUROPEAN_UNION}
+
+# "any country" on its own, and the "or area including the United States" that the list
+# splitter leaves behind, mean every origin -- the provision keys on origin and the answer
+# is "all of them". "any country not exempt under U.S. note 41(c)", "any country identified
+# in general note 3(b)" and "any country determined by CBP to have been transshipped" do
+# not: each names a set this data cannot enumerate, and treating them as universal applies
+# them to origins they exclude.
+UNIVERSAL_ORIGIN = frozenset({"any country", "any country or area"})
+
 
 def country_code(name: str) -> str | None:
     """Resolve a country named in the schedule to its ISO 3166-1 alpha-2 code.
@@ -45,3 +65,60 @@ def country_code(name: str) -> str | None:
 
 def is_not_a_country(name: str) -> bool:
     return name.strip().lower() in NOT_A_COUNTRY
+
+
+def bloc_members(phrase: str) -> tuple[str, ...]:
+    """Expand a trading bloc named as an origin into its member countries.
+
+    Names, not codes: everything downstream of the extractor works in the names the schedule
+    prints, and handing it codes makes each one look like a country name that failed to
+    resolve. The stored list is codes because those are what ISO keeps stable.
+
+    Args:
+        phrase: The origin as printed, e.g. ``'a member state of the European Union'``.
+
+    Returns:
+        The members' ISO country names, or an empty tuple when the phrase names no bloc this
+        module knows.
+
+    Raises:
+        LookupError: A code in ``BLOCS`` is not in the ISO register.
+    """
+    codes = BLOCS.get(phrase.strip().lower(), ())
+    names = []
+    for code in codes:
+        found = pycountry.countries.get(alpha_2=code)
+        if found is None:
+            raise LookupError(f"{code} is not an ISO 3166-1 alpha-2 code")
+        names.append(found.name)
+    return tuple(names)
+
+
+def origin_scope(named: list[str], generic: set[str]) -> str:
+    """Say how a provision limits the origins it reaches, from the phrases it printed.
+
+    This is the column the duty query filters on, and the distinction it draws is the one
+    that matters: a provision reaching *every* origin and a provision reaching a set we
+    cannot list look identical in ``rule_country`` -- both have no rows -- and must not be
+    treated identically.
+
+    Args:
+        named: Country names the provision printed, blocs already expanded.
+        generic: Origin phrases that name no country.
+
+    Returns:
+        ``'none'`` if the provision does not key on origin; ``'any'`` if it keys on origin
+        and reaches all of them; ``'named'`` if ``rule_country`` holds the answer;
+        ``'unresolved'`` if it is bounded by something this data cannot enumerate.
+    """
+    unresolved = [phrase for phrase in generic
+                  if phrase.strip().lower() not in UNIVERSAL_ORIGIN
+                  and not phrase.strip().lower().startswith("area")
+                  and not bloc_members(phrase)]
+    if unresolved:
+        return "unresolved"
+    if named:
+        return "named"
+    if generic:
+        return "any"
+    return "none"

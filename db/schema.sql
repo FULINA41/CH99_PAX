@@ -27,6 +27,7 @@ BEGIN;
 -- is why nothing here depends on embeddings.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
+DROP TABLE IF EXISTS rule_condition CASCADE;
 DROP TABLE IF EXISTS rule_coverage CASCADE;
 DROP TABLE IF EXISTS trade_programme CASCADE;
 DROP TABLE IF EXISTS parse_issue CASCADE;
@@ -189,6 +190,24 @@ CREATE TABLE rule (
   full_description text NOT NULL,
   scope       text NOT NULL
     CHECK (scope IN ('by_code','by_country_all_goods','unknown')),
+
+  -- How the provision limits the origins it reaches. Separate from rule_country because the
+  -- two states that table cannot tell apart are the two that matter:
+  --
+  --   'none'        the provision does not key on origin at all
+  --   'any'         it keys on origin and reaches every one -- "articles the product of
+  --                 any country"; 27 provisions
+  --   'named'       rule_country holds the answer, blocs already expanded
+  --   'unresolved'  it is bounded by a set this data cannot enumerate -- "any country not
+  --                 exempt under U.S. note 41(c)", "identified in general note 3(b)",
+  --                 "determined by CBP to have been transshipped"; 6 provisions
+  --
+  -- Without this column an EU-only provision and a universal one both have zero rule_country
+  -- rows, and a duty query that reads "no rows" as "no restriction" applies the EU rate to a
+  -- Chinese shipment. That is exactly what happened: 9903.05.39 replaced a 16.5% base with
+  -- 10%, and the parser had already recorded the failure as a parse_issue nobody read. D-0056.
+  origin_scope text NOT NULL DEFAULT 'none'
+    CHECK (origin_scope IN ('none','any','named','unresolved')),
 
   rate_text            text,
   rate_kind            text NOT NULL
@@ -471,6 +490,30 @@ CREATE TABLE trade_programme (
   -- A Federal Register search, not a document id: the search is reproducible, and a
   -- document number quoted from memory would read as sourced when it is not.
   reference_url  text NOT NULL
+);
+
+
+-- A condition a provision states about the base rate of the goods it covers.
+--
+-- rate_kind says what a provision does, rule_country says which origins it reaches, and
+-- effective_from says when. Nothing said **on what terms**, and 31 provisions state one:
+-- "articles ... with an ad valorem rate of duty under column 1 less than 10 percent". Unread,
+-- they applied to goods they exclude -- 9903.05.39 replacing a 16.5% base with 10% while its
+-- own sentence rules that base out.
+--
+-- One kind today, and the table rather than two columns on `rule` because `verbatim` is the
+-- point: the app has to quote the condition it judged, not paraphrase it, and a second kind
+-- of condition should not need a migration. The 31 come in complementary pairs -- less than
+-- 15 / equal to or greater than 15 -- which is the evidence the extraction reads the schedule
+-- rather than a pattern in it. D-0057.
+CREATE TABLE rule_condition (
+  rule_hts  text    NOT NULL REFERENCES rule(hts) ON DELETE CASCADE,
+  kind      text    NOT NULL CHECK (kind IN ('col1_rate')),
+  operator  text    NOT NULL CHECK (operator IN ('lt','gte')),
+  value     numeric NOT NULL,
+  -- As printed, so a page can quote the sentence it acted on.
+  verbatim  text    NOT NULL,
+  PRIMARY KEY (rule_hts, kind, operator, value)
 );
 
 

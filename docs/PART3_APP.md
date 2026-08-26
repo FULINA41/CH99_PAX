@@ -37,7 +37,7 @@ run through everything below:
 ## 2. Where it sits
 
 ```
-   Postgres, 14 tables  ← written by Part 2, read-only from here on
+   Postgres, 15 tables  ← written by Part 2, read-only from here on
         │
         ▼
   ┌────────────────────────────────────────────────────────┐
@@ -131,7 +131,15 @@ reaches steel only through U.S. note 31(b) — a list of 349 codes printed in a 
 `rule_base_match` alone under-reports by nearly everything a user came for (D-0036).
 
 The country test is a **veto, not a fourth path**: a provision that names China is not an
-answer about a Vietnamese shipment however well its codes match.
+answer about a Vietnamese shipment however well its codes match. It reads `rule.origin_scope`
+rather than the presence of country rows, because *"any country"* and *"a member state of the
+European Union"* both leave `rule_country` empty and mean opposite things — reading that
+silence as permission replaced a Chinese T-shirt's 16.5% base rate with an EU-only 10% (D-0056).
+
+**A provision can also rule itself out.** 31 state a condition on the base rate of the goods
+they cover — *"with an ad valorem rate of duty under column 1 less than 10 percent"* — and one
+that fails is shown under *Ruled out by their own wording*, quoting the sentence that removed
+it, in neither the floor nor the ceiling (D-0057).
 
 **A provision that arrived on path C is listed but not summed** (D-0049). It names the
 country and describes its goods in words the parser could not turn into codes, so it reaches
@@ -226,7 +234,7 @@ found, rather than failing.
 | The control group is empty | Same steel code from Germany: no Chapter 99 layer, formula degrades to `Free = Free`, two unknowns raised rather than eight |
 | Compound units do not collapse | A code with a `¢/kg` component and no quantity reports the specific term uncomputed, not zero |
 | Coverage is fast | Duty page 70 ms after materialising, from 2,034 ms |
-| Tests | 115 in `workflows`, 15 in `api`, neither needing a database or the network; `tsc --noEmit` clean |
+| Tests | 126 in `workflows`, 15 in `api`, neither needing a database or the network; `tsc --noEmit` clean |
 | Zero client JavaScript for interaction | Disclosure, filtering and navigation are `<details>`, `<select>` and GET forms |
 
 **Nothing on any of these screens was written by a language model.** A machine-written

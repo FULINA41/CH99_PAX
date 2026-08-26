@@ -95,6 +95,24 @@ export function LayerCard({ layer, dimmed = false }: { layer: Layer; dimmed?: bo
         </ul>
       </div>
 
+      {layer.conditions.length > 0 && (
+        <ul className="mt-4 space-y-1.5">
+          {layer.conditions.map((condition) => (
+            <li key={condition.verbatim} className="max-w-prose text-sm leading-relaxed">
+              <span aria-hidden className="mr-2 text-faint">·</span>
+              <span className={condition.met === false ? "text-unsure" : "text-muted"}>
+                {condition.met === false
+                  ? "Its own text rules these goods out: "
+                  : condition.met === null
+                    ? "States a condition this base rate cannot be judged against: "
+                    : "Condition met: "}
+              </span>
+              <span className="italic text-ink">&ldquo;{condition.verbatim}&rdquo;</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <dl className="mt-4 space-y-1">
         {when.effective_from && (
           <Meta label="In force from">{when.effective_from}</Meta>
