@@ -203,6 +203,25 @@ CREATE TABLE rule (
   additional_duty_amount numeric,
   additional_duty_unit   text,
 
+  -- When the provision is in force. Nothing in the JSON export says: it carries no effective
+  -- or expiry field at all, and the PDF marks an expired row by shading it grey, which text
+  -- extraction destroys. Both columns therefore come from the prose, and are NULL when the
+  -- prose is silent -- which is most of the time. D-0043.
+  --
+  -- effective_to is always the LAST DAY IN FORCE, so a caller compares with <= and never has
+  -- to know whether the schedule printed 'and through December 31' or 'and before January 1'.
+  effective_from date,
+  effective_to   date,
+  -- 'terminated' and 'suspended' come from the compiler's asides in square brackets, which
+  -- are the only place the schedule says a provision has stopped. They are not the same as
+  -- an expiry date: 36 provisions read 'provision terminated. See 90 Fed. Reg. 37963.' and
+  -- give no date at all, so a date column alone would leave them looking current.
+  status text NOT NULL DEFAULT 'in_force'
+    CHECK (status IN ('in_force','terminated','suspended')),
+  -- The aside verbatim. It usually carries the Federal Register citation, which is the one
+  -- thing a reader can act on -- our dataset holds the tariff line, not the legal instrument.
+  status_note text,
+
   source_fetch_id bigint REFERENCES source_fetch(id) ON DELETE SET NULL,
 
   full_description_tsv tsvector
@@ -210,6 +229,8 @@ CREATE TABLE rule (
 );
 
 CREATE INDEX rule_scope_idx  ON rule (scope);
+CREATE INDEX rule_status_idx ON rule (status);
+CREATE INDEX rule_window_idx ON rule (effective_from, effective_to);
 CREATE INDEX rule_parent_idx ON rule (parent_hts);
 CREATE INDEX rule_fts_idx    ON rule USING gin (full_description_tsv);
 CREATE INDEX rule_trgm_idx   ON rule USING gin (full_description gin_trgm_ops);

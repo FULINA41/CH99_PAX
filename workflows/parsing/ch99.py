@@ -5,6 +5,7 @@ from typing import Any
 
 from parsing.countries import country_code, is_not_a_country
 from parsing.db import connect
+from parsing.effectivity import parse_effectivity
 from parsing.issues import Issue, insert_issues
 from parsing.rates import Rate, parse_rate
 from parsing.tree import build_nodes
@@ -145,6 +146,7 @@ def parse_ch99(path: str, *, source_fetch_id: int | None) -> Ch99Data:
         excluded = _excluded_codes(text)
         referenced = sorted(set(BASE_CODE.findall(text)))
         countries, generic = _countries(text)
+        window = parse_effectivity(text)
 
         if rate.kind == "prose":
             data.issues.append(Issue(STAGE, "unparsed_rate", node.hts, rate.text))
@@ -171,6 +173,10 @@ def parse_ch99(path: str, *, source_fetch_id: int | None) -> Ch99Data:
             "additional_duty_pct": additional.ad_valorem_pct,
             "additional_duty_amount": additional.specific_amount,
             "additional_duty_unit": additional.specific_unit,
+            "effective_from": window.effective_from,
+            "effective_to": window.effective_to,
+            "status": window.status,
+            "status_note": window.status_note,
             "source_fetch_id": source_fetch_id,
         })
 
@@ -287,6 +293,7 @@ RULE_COLUMNS = (
     "full_description", "scope", "rate_text", "rate_kind", "rate_ad_valorem_pct",
     "rate_specific_amount", "rate_specific_unit", "additional_duty_text",
     "additional_duty_pct", "additional_duty_amount", "additional_duty_unit",
+    "effective_from", "effective_to", "status", "status_note",
     "source_fetch_id",
 )
 CHILD_TABLES = (
@@ -334,8 +341,15 @@ def load_ch99(data: Ch99Data, *, run_id: str | None, dsn: str | None = None) -> 
     for rule in data.rules:
         scopes[rule["scope"]] = scopes.get(rule["scope"], 0) + 1
 
+    statuses: dict[str, int] = {}
+    for rule in data.rules:
+        statuses[rule["status"]] = statuses.get(rule["status"], 0) + 1
+
     return {
         "rules": len(data.rules),
+        "statuses": statuses,
+        "dated": sum(1 for r in data.rules
+                     if r["effective_from"] or r["effective_to"]),
         "references": sum(1 for e in data.edges if e["edge_type"] == "references"),
         "excludes": sum(1 for e in data.edges if e["edge_type"] == "excludes"),
         "countries": len(data.countries),

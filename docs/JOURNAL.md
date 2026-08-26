@@ -1179,3 +1179,32 @@ groups were deterministic and larger than the LLM's; one group was unreachable b
 method. The LLM's genuine share is 48 provisions across 34 notes — real, but fourth in line,
 and invisible until the partition existed. Scope questions phrased as tool questions are
 worth re-asking as measurement questions.
+
+**Step 0b — effectivity.** Added `effective_from`, `effective_to`, `status` and
+`status_note` to `rule`, read from the two prose signals the sources leave (D-0043). The
+compiler's asides turned out to be twice what the plan estimated: 42 provisions in their own
+description, 70 counting a superior text's, against the 21 dated windows the plan had
+counted. Splitting status from dates was forced by the largest group — 36 provisions read
+`provision terminated. See 90 Fed. Reg. 37963.` and give no date at all, so date columns
+alone would have left them looking current.
+
+The domain behaviour that fell out of this is the part worth recording: `9903.01.63`, the
+34% reciprocal rate on China, comes back `suspended — see 90 Fed. Reg. 50729`, and
+`9903.88.16`, section 301 list 4B at 15%, likewise. Neither was special-cased; both are the
+compiler's own words.
+
+```
+status            in_force 3,028 · terminated 45 · suspended 25
+carrying a date   52
+on 2026-08-25     in force 3,005 · expired 26 · not yet in force 5
+laptop control    additive layers 8 -> 6
+```
+
+Parser run twice with no code change: identical, `parse_issue` 848 both times.
+
+One thing nearly went wrong. The same descriptions carry a transit carve-out — "Except for
+goods loaded onto a vessel ... in transit before 12:01 a.m. eastern daylight time on April
+9, 2025" — and my first instinct was to match `on or after <date>` anywhere in the text.
+That reads a carve-out for goods already at sea as the date the provision starts, on
+`9903.01.51` and `9903.02.43`. Anchoring on `effective with respect to entries` was the fix,
+and the eight-case check that caught it was written before the regex, not after.

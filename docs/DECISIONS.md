@@ -1617,6 +1617,75 @@ recorded, not silently dropped.
 
 ---
 
+## D-0043 — Read effectivity from the prose, and keep status apart from dates
+**Date:** 2026-08-25 · **Area:** schema, parser · **Status:** accepted · settles P-i
+
+**Context.** The steel query returned `9903.91.14 +100%` — a duty on ship-to-shore gantry
+cranes that does not begin until **10 November 2026**, shown as current on 25 August 2026 —
+alongside nine `9903.88.5x` provisions that ended on 31 December 2020. Presenting either as
+applicable is the plain "wrong information" failure, on the first example the app shows.
+
+Nothing in the sources states this as a field. The JSON export has no effective or expiry
+column at all; the PDF marks an expired row by shading it grey, which text extraction
+destroys. Two signals survive, both in the prose, and they are different in kind:
+
+```
+44  'Effective with respect to entries on or after <date>[, and through|before <date>]'
+70  compiler's asides in square brackets:
+      'provision terminated. See 90 Fed. Reg. 37963.'          36  -- NO DATE
+      'provision terminated as of February 7, 2026.'            6
+      'Duties suspended except on certain goods entered from FTZs'  23  (from a superior
+                                                                        text, and it does
+                                                                        govern the rows
+                                                                        beneath it)
+      'provision suspended. See 90 Fed. Reg. 50729.'            2
+      'expired at the close of Dec. 31, 2020.'                  1
+```
+
+**Options.**
+- Two date columns only — leaves the 36 dateless terminations looking current, which is the
+  larger group and the one the schedule is most emphatic about.
+- A single `is_active` boolean — cannot answer "in force on which date", and the whole point
+  is that `9903.91.06` starts in January and `9903.91.14` in November.
+- Dates plus a status plus the aside verbatim.
+
+**Decision.** The third. `rule` gains `effective_from`, `effective_to`, `status`
+(`in_force` / `terminated` / `suspended`) and `status_note`. In force on a date D is
+
+```sql
+status = 'in_force'
+  AND (effective_from IS NULL OR effective_from <= D)
+  AND (effective_to   IS NULL OR effective_to   >= D)
+```
+
+`effective_to` is always the **last day in force**, so `and before January 1, 2026` is stored
+as `2025-12-31` and a caller compares with `<=` without knowing which word was printed.
+`status_note` keeps the aside verbatim because it carries the Federal Register citation —
+the only actionable thing in it, since this dataset holds the tariff line and not the legal
+instrument that made it.
+
+The extraction is anchored on `effective with respect to entries` and nothing looser. The
+same descriptions carry a transit carve-out — "Except for goods loaded onto a vessel ... in
+transit before 12:01 a.m. eastern daylight time on April 9, 2025" — and a pattern that
+merely looked for `on or after <date>` reads one as the other on `9903.01.51` and
+`9903.02.43`.
+
+Measured: 3,028 `in_force` · 45 `terminated` · 25 `suspended`; 52 provisions carry a date.
+On 2026-08-25: 3,005 in force, 26 expired, 5 not yet. The steel query's layers drop from 2
+to 2 and the laptop control's from 8 to 6 — `9903.01.63` (34% on China) is *suspended, see
+90 Fed. Reg. 50729*, and `9903.88.16` (§301 list 4B, 15%) likewise.
+
+**Tradeoff.** This sees only what the prose says. The grey shading is gone, so a provision
+expired by shading alone still reads `in_force`, and 3,028 of 3,098 provisions carry no
+signal at all — the schedule states a window only when it is unusual. The status is also
+read from ancestors, which is right for a superior text's 'Duties suspended ...' and would
+be wrong if a coded parent were ever terminated while a child was not; no such case exists
+in this revision, and nothing checks for one.
+
+**Feeds.** SUBMISSION.md §2, §4, §5
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
@@ -1633,10 +1702,9 @@ numbered entry above once decided — do not decide them here.
   assumption that belongs in SUBMISSION.md §5. A 9902 reduction combined with a 9903
   additional duty is not an assumption: note 20(a) states that goods eligible for
   subchapter II reductions remain subject to the Section 301 duty.
-- **P-i · Effectivity.** Expired provisions are marked in the PDF by grey shading, which
-  text extraction destroys, and by 161 "Compiler's note" asides in prose. The JSON carries
-  no effective or expiry field at all. Decide whether to extract the compiler notes into a
-  field, and how the UI says "this may no longer be in force".
+- ~~**P-i · Effectivity.**~~ Settled by **D-0043**: `effective_from`, `effective_to`,
+  `status` and `status_note` on `rule`, read from the two prose signals. The grey shading is
+  still lost, and that limitation is recorded there.
 - ~~**P-a · Cross-reference code granularity.**~~ Settled by **D-0015**: stored twice, as
   printed in `rule_edge` and as resolved in `rule_base_match`.
 - ~~**P-b · Inherited base rates.**~~ Settled by **D-0014**: materialised onto every row,
