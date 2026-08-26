@@ -27,6 +27,7 @@ BEGIN;
 -- is why nothing here depends on embeddings.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
+DROP TABLE IF EXISTS rule_coverage CASCADE;
 DROP TABLE IF EXISTS trade_programme CASCADE;
 DROP TABLE IF EXISTS parse_issue CASCADE;
 DROP TABLE IF EXISTS note_base_match CASCADE;
@@ -413,6 +414,30 @@ CREATE TABLE note_base_match (
 );
 
 CREATE INDEX note_base_match_base_idx ON note_base_match (base_hts);
+
+
+-- ===========================================================================
+-- Derived for the app
+-- ===========================================================================
+
+-- How many base codes each provision reaches, by either path.
+--
+-- The one thing in this schema precomputed for speed, and it is here because the first
+-- measurement was of the wrong shape. Counting one provision's coverage takes 4 ms, which is
+-- why D-0044 concluded no table was needed. A duty page does not ask for one: a laptop from
+-- China matches 88 provisions, and counting all 88 in a single query takes **1,568 ms** —
+-- more than three quarters of that page's entire response time. Everything else it runs is
+-- under 6 ms. D-0047.
+--
+-- Rebuilt by the materialize task at the end of the parse run, in the same transaction-free
+-- pass as trade_programme, so it cannot describe a set of rules that no longer exists.
+CREATE TABLE rule_coverage (
+  rule_hts     text PRIMARY KEY REFERENCES rule(hts) ON DELETE CASCADE,
+  -- The union: a code reached both ways is one code, not two.
+  base_codes   int NOT NULL,
+  direct_codes int NOT NULL,
+  note_codes   int NOT NULL
+);
 
 
 -- ===========================================================================

@@ -98,19 +98,20 @@ def resolve_citations(input: ParseInput, ctx: Context) -> dict[str, Any]:
     return written
 
 
-@parse_workflow.task(parents=[parse_chapter99], execution_timeout=PARSE_TIMEOUT)
+@parse_workflow.task(parents=[resolve_citations], execution_timeout=PARSE_TIMEOUT)
 def materialize(input: ParseInput, ctx: Context) -> dict[str, Any]:
-    # The editorial layer, rebuilt in the same run that rewrites the tables under it, so
-    # there is no window in which it is stale rather than a short one. It needs only the
-    # Chapter 99 rows, which is why it hangs off parse_chapter99 and not the resolver.
+    # Everything derived, rebuilt in the same run that rewrites the tables under it, so there
+    # is no window in which it is stale rather than a short one. After the resolver, because
+    # rule_coverage counts what the resolver wrote.
     #
-    # Nothing is precomputed for speed here. Every screen query was measured against the
-    # loaded database first and the slowest -- a full duty stack for one code and country --
-    # runs in 44.8 ms, so the derived tables this step was planned to hold were not built.
-    # D-0044 records the measurements and why.
+    # Only one thing is precomputed for speed, and only after measuring the shape a page
+    # actually asks for: coverage for one provision costs 4 ms, for the 88 a laptop from
+    # China matches it costs 1,568 ms. D-0044 records what was measured and not built;
+    # D-0047 records the one measurement that was taken wrongly and what it cost.
     written = load_programmes()
 
-    ctx.log(f"trade_programme: {written['programmes']} programmes labelling "
+    ctx.log(f"rule_coverage: {written['coverage_rows']:,} provisions; "
+            f"trade_programme: {written['programmes']} programmes labelling "
             f"{written['rules_labelled']:,} of {written['subchapter_iii_rules']:,} "
             f"subchapter III provisions")
     return written

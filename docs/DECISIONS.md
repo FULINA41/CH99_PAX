@@ -1832,6 +1832,133 @@ piling up invisibly behind one.
 
 ---
 
+## D-0047 — Materialise coverage after all, because the first measurement was of one row
+**Date:** 2026-08-26 · **Area:** schema, app · **Status:** accepted · supersedes part of D-0044
+
+**Context.** D-0044 withdrew three derived tables after measuring each. One of those
+measurements was taken wrongly, and the engine found it:
+
+```
+GET /duty/8471.30.01.00?country=CN&value=100000        2,034 ms
+  APPLICABLE          5.8 ms   88 rules matched
+  EVIDENCE_NOTE       1.1 ms
+  CITED_NOTES         2.5 ms
+  EXCLUSIONS          1.6 ms
+  CLASSIFICATION      1.5 ms
+  COVERAGE        1,567.9 ms   <-- three quarters of the response
+```
+
+D-0044 measured coverage for **one** provision — 4 ms — and concluded no table was needed. A
+duty page never asks for one. A laptop from China matches 88 provisions, and the note-path
+union has to be expanded for every one of them in a single query.
+
+This is the same error D-0044 itself was written about, one level down: a real measurement,
+of a shape the application does not use, carried forward as if it settled the question.
+
+**Options.**
+- Drop coverage from the response — it is only a scale cue, and the page would be fast.
+- Count it only for the provisions in the formula, not for exclusions or expired ones —
+  fewer rows, but the number is then missing exactly where a reader is most suspicious: on a
+  provision whose note we fell back to a parent for.
+- Materialise it, which is the textbook case: a per-provision constant that changes only when
+  the parser runs.
+
+**Decision.** The third. `rule_coverage(rule_hts, base_codes, direct_codes, note_codes)`,
+**2,825 rows**, filled by the `materialize` task after `resolve_citations`, in the same run
+that rewrote the tables under it. Measured after: the same page is **70 ms**, everything else
+6–9 ms.
+
+The three paths are kept apart in the row rather than summed, because a provision reaching
+9,000 codes through a note is a different claim from one naming 9,000 codes itself, and the
+distinction is what makes D-0038's `parent_fallback` legible.
+
+**Tradeoff.** D-0044's conclusion stands for the other two tables and its measurements are
+still the reason. What does not stand is the method: "measured, therefore settled" is only
+true if the query measured is the query the screen runs. The rule this leaves is narrower
+than the one D-0044 claimed — measure at the shape and cardinality of the real page, or the
+number is decoration.
+
+**Feeds.** SUBMISSION.md §3, §4
+
+---
+
+## D-0048 — No ORM: raw SQL, with Pydantic on the responses
+**Date:** 2026-08-26 · **Area:** app · **Status:** accepted
+
+**Context.** Asked in review whether an ORM would be better. The brief says ORMs are
+"helpful but not required", so this is a judgement rather than a constraint.
+
+**Options.**
+- A full ORM (SQLModel, SQLAlchemy ORM) — models become a second definition of the schema.
+- SQLAlchemy Core — composable expressions without object mapping.
+- Raw parameterised SQL, with Pydantic models on the way out.
+
+**Decision.** The third, on four grounds specific to this API rather than to ORMs:
+
+1. **It is read-only.** No inserts, no updates, no migrations. Half of what an ORM manages —
+   identity, unit of work, schema evolution — has nothing to do here.
+2. **The queries are not CRUD.** The central one is a union of two reach paths with a country
+   veto over the top; the exclusion walk needs a depth cap for a cycle. These come out of an
+   ORM as `text()` anyway, which is the ORM's cost with none of its benefit.
+3. **It would create a second schema.** `db/schema.sql` is the definition, heavily commented,
+   and part of the submission. ORM models would be a parallel one kept in step by hand.
+4. **The SQL is the explanation.** This app's claim is that a reader can check any number on
+   a page. `duty/queries.py` is written to be read for that reason; a query builder puts a
+   translation between what is shown and what was run.
+
+What an ORM would genuinely have fixed is typing: `rows()` returns `dict[str, Any]`. Pydantic
+response models fix it without a second schema, and FastAPI needs them for the OpenAPI
+document regardless — one investment, three returns.
+
+**Tradeoff.** Column names are strings, so a typo surfaces at runtime rather than at import.
+The tests cover the shapes and `/docs` covers the contract, but nothing checks that
+`queries.py` and `schema.sql` agree — a rename in the schema breaks the API silently until
+something reads that column. An ORM would have caught that class at import time.
+
+**Feeds.** SUBMISSION.md §3
+
+---
+
+## D-0049 — A provision that matched on origin alone is listed, not counted
+**Date:** 2026-08-26 · **Area:** app, domain · **Status:** accepted
+
+**Context.** `/duty/7208.51.00.30?country=RU` — hot-rolled steel from Russia — reported
+**220%**. The 200% came from `9903.85.67`, whose description begins *"Aluminum articles that
+are the product of Russia"*. It has `scope = 'by_country_all_goods'`: it cites no code and no
+note with a list, so the parser could not tie its wording to any subheading, and it therefore
+reaches every Russian import including steel (the fallback D-0018 chose deliberately).
+
+The mirror of it: on Chinese steel, `9903.88.04` — section 301 — arrives the same way,
+because U.S. note 20(g) is prose. Dropping it silently understates by 25 points; counting it
+overstates on the goods it does not cover.
+
+**Options.**
+- Count them, as before — puts an aluminium duty on a steel shipment, on the front page.
+- Drop them — loses section 301 from a Chinese query, which is most of what a user came for.
+- List them in their own bucket, keep them out of the headline figure, and report a range.
+
+**Decision.** The third. `Layer.scope` travels to the client, provisions with
+`by_country_all_goods` go into `origin_scoped`, and `Total` carries a floor and a ceiling:
+
+```
+7208.51.00.30 from China    25%  ..  up to 50%
+7208.51.00.30 from Russia   20%  ..  up to 220%
+7208.51.00.30 from Germany  Free            (nothing origin-scoped, so no range)
+```
+
+An `origin_scoped` unknown says why, in the provision's own terms: it names your country and
+describes the goods it covers in words, and nothing in the data ties that wording to a code.
+
+**Tradeoff.** A range is harder to read than a number, and a user who takes only the floor
+will under-budget. That is the cost of not inventing precision the sources do not have — and
+it is the same trade the total's assumption line already makes about stacking order. The
+split also depends on `scope` being right, which is a parser judgement made before any note
+was read and corrected only by the resolver (D-0018).
+
+**Feeds.** SUBMISSION.md §3, §5
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

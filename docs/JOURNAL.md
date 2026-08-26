@@ -1266,3 +1266,73 @@ Both took under two minutes to test and both were wrong. The 3,988 ms figure is 
 failure one level down: a real measurement, of a query the application will never issue,
 carried into the plan as if it were evidence. Measuring the wrong thing reads exactly like
 measuring, which is what makes it worse than not measuring at all.
+
+## 2026-08-26 — Part 3: the API skeleton, then the duty engine
+
+**Step 1 — two services.** Replaced the Bun scaffold with FastAPI (`api/`) and Next.js
+(`app/`). The split earns its keep in one line: Server Components fetch from `api:8000` over
+the compose network, the browser goes through a rewrite in `next.config.ts`, so there is no
+CORS and no API origin in a bundle. `API_URL` is deliberately not `NEXT_PUBLIC_`.
+
+An hour of it went to memory. Docker was allocated 1,792 MiB, and `next dev`'s first compile
+plus the worker's `uv sync` peak do not fit beside Postgres and Hatchet; the app container
+printed `Killed` and nothing else, three times, before I stopped guessing and read
+`settings-store.json`. At 3.8 GiB the whole stack runs at **1,504 MB** and all six services
+coexist. Measured numbers are in `app/README.md` now, since a grader on a small VM will hit
+exactly this.
+
+I also wrote three tests for `routes/meta.py` and deleted them ten minutes later. They
+asserted that a SQL string contains `ORDER BY 3 DESC` — which passes whether or not the query
+is right. That is the failure mode CLAUDE.md names explicitly, written by me, in the same
+session I had been congratulating myself for measuring things.
+
+**Step 2 — the engine.** `api/duty/` is four files: the SQL, the three reach paths, the
+arithmetic, and the assembly. Two design points survived contact with the data and one did
+not.
+
+Survived: `rate_kind` as an operator carries straight to the screen, so the formula on a page
+is the schema's own shape rather than a re-derivation. And a specific duty with no quantity
+reports as uncomputable, never as zero — a `$0` on a line charging 46.3¢/kg is the worst
+possible wrong answer.
+
+Did not survive: counting every matched provision into one total. `/duty/7208.51.00.30?country=RU`
+reported **220%**, and the 200% was `9903.85.67`, *"Aluminum articles that are the product of
+Russia"*, applied to a steel shipment. It matched on country alone because its goods
+limitation is in prose. The mirror case is section 301 on Chinese steel, which arrives the
+same way and must not be dropped. Split into an `origin_scoped` bucket with a floor and a
+ceiling (D-0049):
+
+```
+steel from China    25%  ..  up to 50%
+steel from Russia   20%  ..  up to 220%
+steel from Germany  Free
+```
+
+**The measurement I got wrong twice.** D-0044 withdrew three derived tables after measuring
+each one. Then the finished engine timed a real page:
+
+```
+GET /duty/8471.30.01.00?country=CN     2,034 ms
+  COVERAGE   1,567.9 ms   <-- 88 provisions matched
+  everything else, all nine queries, under 6 ms
+```
+
+D-0044 had measured coverage for **one** provision (4 ms). A duty page never asks for one.
+Materialised it as `rule_coverage`, 2,825 rows, and the same page is **70 ms** (D-0047).
+
+This is the third time this session the same mistake has appeared, and it is worth naming
+precisely because each instance looked like diligence: the note-path GROUP BY over all 26,246
+codes, the coverage-versus-over-breadth correlation I asserted without testing, and now
+coverage measured at cardinality one. Measuring the wrong shape is indistinguishable from
+measuring, right up until something real runs.
+
+```
+api tests        15 passed          workflows tests  115 passed
+parser run twice, no code change: nine tables identical, parse_issue 848 both times
+/duty response   6-9 ms typical, 70 ms worst measured
+```
+
+**Agent notes.** The engine found two defects the parser's own verification could not: the
+Russian aluminium duty on steel, and the coverage query. Neither is visible from inside Part
+2, because Part 2's question is "did every row get parsed" and this one is "is the answer
+right". Building the consumer is the test.

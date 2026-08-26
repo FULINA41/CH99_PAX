@@ -71,6 +71,29 @@ SEARCH = ("https://www.federalregister.gov/documents/search"
 
 COLUMNS = ("heading_prefix", "label", "statute", "agency", "evidence", "reference_url")
 
+# Coverage per provision, by both paths and by their union. Materialised because a duty page
+# needs it for every provision it matched at once -- 88 of them for a laptop from China, which
+# costs 1,568 ms live against 6 ms for everything else on that page. D-0047.
+COVERAGE = """
+INSERT INTO rule_coverage (rule_hts, base_codes, direct_codes, note_codes)
+SELECT rule_hts,
+       count(*),
+       count(*) FILTER (WHERE direct),
+       count(*) FILTER (WHERE via_note)
+FROM (
+    SELECT rule_hts, base_hts,
+           bool_or(direct) AS direct, bool_or(via_note) AS via_note
+    FROM (
+        SELECT rule_hts, base_hts, true AS direct, false AS via_note FROM rule_base_match
+        UNION ALL
+        SELECT rn.rule_hts, nbm.base_hts, false, true
+        FROM note_base_match nbm JOIN rule_note rn ON rn.note_id = nbm.note_id
+    ) reached
+    GROUP BY rule_hts, base_hts
+) per_code
+GROUP BY rule_hts
+"""
+
 
 def load_programmes(dsn: str | None = None) -> dict[str, Any]:
     """Replace the editorial trade-programme reference, in one transaction.
@@ -85,6 +108,10 @@ def load_programmes(dsn: str | None = None) -> dict[str, Any]:
         How many programmes were written and how many Chapter 99 provisions they cover.
     """
     with connect(dsn) as conn, conn.cursor() as cursor:
+        cursor.execute("TRUNCATE rule_coverage")
+        cursor.execute(COVERAGE)
+        covered_rules = cursor.rowcount
+
         cursor.execute("TRUNCATE trade_programme")
         with cursor.copy(
             f"COPY trade_programme ({', '.join(COLUMNS)}) FROM STDIN"
@@ -104,6 +131,7 @@ def load_programmes(dsn: str | None = None) -> dict[str, Any]:
         subchapter_iii = cursor.fetchone()[0]
 
     return {
+        "coverage_rows": covered_rules,
         "programmes": len(PROGRAMMES),
         "rules_labelled": covered,
         "subchapter_iii_rules": subchapter_iii,

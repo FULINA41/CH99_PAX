@@ -27,7 +27,8 @@ def _report(summary: dict) -> None:
         print(f"  {key:<12} source_fetch #{fetch_id}")
 
     programmes = summary["programmes"]
-    print(f"\nprogramme {programmes['programmes']:>7} editorial trade programmes labelling "
+    print(f"\nderived   {programmes['coverage_rows']:>7,} provisions with a coverage count")
+    print(f"          {programmes['programmes']:>7} editorial trade programmes labelling "
           f"{programmes['rules_labelled']:,} of {programmes['subchapter_iii_rules']:,} "
           f"subchapter III provisions")
 

@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 
 from db import lifespan
-from routes import meta
+from routes import duty, meta
 
 app = FastAPI(
-    title="Chapter 99 API",
+    title="HTSUS API",
     version="0.1.0",
     description=(
-        "Read-only access to the HTSUS Chapter 99 database built by the Part 1 scraper and "
+        "Read-only access to the HTSUS database built by the Part 1 scraper and "
         "the Part 2 parser.\n\n"
         "Every endpoint returns the same object the web app renders, so any number shown on "
         "a page can be checked here against the rows it came from. Nothing is computed in "
@@ -17,3 +17,4 @@ app = FastAPI(
 )
 
 app.include_router(meta.router)
+app.include_router(duty.router)

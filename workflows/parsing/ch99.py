@@ -306,7 +306,7 @@ CHILD_TABLES = (
 # rule is referenced by five tables. Naming them, rather than CASCADEing, means a table
 # added later fails here with its name in the message instead of being quietly emptied.
 TRUNCATE = ("TRUNCATE rule, rule_edge, rule_country, rule_identifier, rule_note, "
-            "rule_base_match")
+            "rule_base_match, rule_coverage")
 
 
 def load_ch99(data: Ch99Data, *, run_id: str | None, dsn: str | None = None) -> dict[str, Any]:
