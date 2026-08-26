@@ -1208,3 +1208,61 @@ goods loaded onto a vessel ... in transit before 12:01 a.m. eastern daylight tim
 That reads a carve-out for goods already at sea as the date the provision starts, on
 `9903.01.51` and `9903.02.43`. Anchoring on `effective with respect to entries` was the fix,
 and the eight-case check that caught it was written before the regex, not after.
+
+**Step 0c — the step that measurement cancelled.** The plan carried three derived tables.
+Measuring them first withdrew all three (D-0044), and the number that had put them in the
+plan turned out to be my own mistake: "the note path costs 3,988 ms" is a `GROUP BY` over all
+26,246 base codes at once, which no screen runs. Shaped the way a page actually asks, the
+same work is **3.762 ms**, and the slowest thing in the whole app — a full duty stack for one
+code and one country — is **44.8 ms**.
+
+Each table also failed on its own terms, and two of the failures were arguments I had made
+myself without checking:
+
+- I said `rule_coverage` would substantiate D-0038's over-breadth warning. It does not:
+  `parent_fallback` provisions have a *lower* median coverage than `exact` ones (4,146 against
+  9,579). I invented the correlation.
+- I said `base_profile`'s provision count would teach a novice which goods are in a trade
+  action. Sampled, 1,038 of ~1,187 codes have 20 or more — the number is the same everywhere,
+  because the reciprocal tariff really does cover almost everything.
+- `rule_exclusion_closure` has nothing to close: 859 edges at depth 1, 23 at depth 2, and a
+  **cycle** below that (`9903.91.12` ↔ `9903.91.13`). The finding worth keeping is the cycle,
+  not the table — any recursive walk needs a depth cap or it does not terminate.
+
+What replaced them is one editorial table (D-0045). Measured: of 345 U.S. notes exactly one
+names a statute. So `9903.88.04 +25%` cannot be told from the data to be Section 301, and the
+app that exists to explain Chapter 99 could not say what any duty was. Seven heading families
+are labelled, each carrying an `evidence` column quoting what the parsed rows themselves say,
+and 9903.89 and 9903.90 are left blank rather than guessed at.
+
+The flagship query now reads as something a person can follow:
+
+```
+7208.51.00.30   hot-rolled steel, product of China
+   Free                       Column 1 General, inherited from 7208.51.00
+   + 25%   9903.88.04         Section 301 — China
+   + 25%   9903.91.01         Section 301 — China, 2024 review   (via note 31(b), the steel list)
+```
+
+**An hour lost to infrastructure, and one real fix out of it.** Hatchet Lite degraded after
+three days up and a dozen runs: heartbeats timing out, `acquired_connections=38`,
+`listing actions for 0 workers`. Recreating the container did not help; wiping its own
+database volume did. But the real damage was downstream — the worker had been killed
+mid-`COPY hts_base`, and `pg_stat_activity` showed that COPY still `active` in
+`wait_event_type='Client'` **42 minutes later**, with nine `TRUNCATE`s stacked behind it on
+locks. Nothing failed and nothing logged; runs simply never finished. Fixed by setting
+`lock_timeout = 10s` on every parser connection (D-0046) — this parser holds exclusive locks
+for seconds, so a ten-second wait means broken, not busy.
+
+```
+trade_programme   7 programmes labelling 308 of 624 subchapter III provisions
+```
+
+Parser run twice with no code change: all ten tables identical, `parse_issue` 848 both times.
+
+**Agent notes.** Twice in this step I defended a design with a reason I had not checked — the
+coverage/over-breadth correlation, and the "how many provisions" count as a teaching signal.
+Both took under two minutes to test and both were wrong. The 3,988 ms figure is the same
+failure one level down: a real measurement, of a query the application will never issue,
+carried into the plan as if it were evidence. Measuring the wrong thing reads exactly like
+measuring, which is what makes it worse than not measuring at all.

@@ -26,6 +26,11 @@ def _report(summary: dict) -> None:
     for key, fetch_id in sorted(summary["sources"].items()):
         print(f"  {key:<12} source_fetch #{fetch_id}")
 
+    programmes = summary["programmes"]
+    print(f"\nprogramme {programmes['programmes']:>7} editorial trade programmes labelling "
+          f"{programmes['rules_labelled']:,} of {programmes['subchapter_iii_rules']:,} "
+          f"subchapter III provisions")
+
     base = summary["hts_base"]
     print(f"\nhts_base  {base['rows']:>7,} rows")
     print(f"          {base['inherited']:>7,} Column 1 rates inherited from an ancestor")

@@ -1686,6 +1686,152 @@ in this revision, and nothing checks for one.
 
 ---
 
+## D-0044 — Precompute nothing, because every screen query was measured first
+**Date:** 2026-08-25 · **Area:** schema, app · **Status:** accepted
+
+**Context.** Part 3's brief invites precomputation directly — *"compute an answer once and
+store it… flatten a join, add a materialized view, precompute the exclusion graph"* — and
+says the choice is what it reads for. The plan therefore carried three derived tables. Before
+building them, each was measured against the loaded database, and the measurement withdrew
+all three.
+
+The number that put them in the plan was wrong. "The note path costs **3,988 ms**" is a
+`GROUP BY` over all 26,246 base codes at once, which no screen ever runs. Shaped the way a
+screen actually asks:
+
+```
+search results page, 30 codes each with a trade-programme count       3.762 ms
+one base code's trade-programme count                                 0.830 ms
+one provision's coverage size ("this note covers 4,166 subheadings")  4.065 ms
+one provision's exclusion walk, depth-capped                          0.216 ms
+FULL DUTY STACK, one code and one country (7208.51.00.30 + China)    44.789 ms
+the same for a widely covered code (6109.10.00.12 + Vietnam)          3.114 ms
+```
+
+Each table also failed on its own terms:
+
+- **`rule_exclusion_closure`** — the graph has no depth to close. 859 edges at depth 1, 23 at
+  depth 2, and below that a **cycle**: `9903.91.12` and `9903.91.13` exclude each other.
+- **`rule_coverage`** — was to substantiate D-0038's over-breadth warning. It does not:
+  `parent_fallback` provisions average 7,083 codes against `exact`'s 5,847, but their *median*
+  is lower (4,146 against 9,579). Coverage size does not indicate over-breadth.
+- **`base_profile`** — was to hold "how many provisions reach this code". Sampled, 1,038 of
+  ~1,187 codes have 20 or more, and 142 have none. The number is the same everywhere and
+  carries no information, because the reciprocal tariff genuinely does cover almost
+  everything. Counting *distinct heading families* instead is selective — 107 codes at 0, 731
+  at 1, 85 at 2 — but it is 3.762 ms for a whole page and needs no table.
+
+**Options.**
+- Build all three, since the brief names two of them by category.
+- Build `base_profile` only, holding the selective count.
+- Build none, and answer the brief with the measurements.
+
+**Decision.** The third. Nothing is precomputed for speed. The `materialize` task still
+exists, because D-0045's editorial table has to be loaded and Part 3's LLM build artifacts
+will be loaded beside it, but it holds no derived aggregate.
+
+**Tradeoff.** The submission has to make the case in numbers, or "we built no derived tables"
+reads as work not done. It also holds only at this size: 26,246 base codes and 3,098
+provisions fit in cache, and at ten times the data the 44.8 ms stack query is the first thing
+that would need materialising. The depth cap on any exclusion walk is not optional — the
+cycle above is real and an uncapped recursive CTE does not terminate.
+
+**Feeds.** SUBMISSION.md §3, §4
+
+---
+
+## D-0045 — One editorial table, because the schedule never names the statute
+**Date:** 2026-08-25 · **Area:** schema, app · **Status:** accepted
+
+**Context.** `9903.88.04` reads *"+25%, articles the product of China, as provided for in
+U.S. note 20(g)"*. Nothing in it says Section 301, who imposed it, or under what authority.
+Measured across all 345 U.S. notes: **exactly one** names a statute, note 21, and it says
+"section 201". An app whose purpose is explaining Chapter 99 to a novice cannot say what any
+of these duties are.
+
+**Options.**
+- Say nothing, and show heading numbers — honest, and leaves the novice exactly where the
+  schedule left them.
+- Derive the grouping from the notes — impossible; the words are not there.
+- A small editorial table, marked as such, admitted only where the data itself states the
+  subject matter and the attribution is public record.
+
+**Decision.** The third. `trade_programme` maps a 6-digit heading family to a label, statute,
+agency, and — critically — an `evidence` column holding what the parsed rows say, so a
+reviewer can re-derive the grouping without trusting the label:
+
+```
+9903.01  IEEPA — border actions and the reciprocal baseline           75 provisions
+9903.02  IEEPA — reciprocal tariffs, country-specific rates           91
+9903.82  Section 232 — steel and aluminium                            26
+9903.85  Section 232 — aluminium of Russian origin                     2
+9903.88  Section 301 — China                                          66
+9903.91  Section 301 — China, 2024 review                             16
+9903.94  Section 232 — automobiles and automobile parts               32
+```
+
+308 of 624 subchapter III provisions get a label. A family is admitted only when its
+provisions state their own subject matter — "Articles of aluminum or of steel and derivative
+aluminum or steel articles", "Automobile parts the product of Japan" — and left out when they
+do not: **9903.89** covers a 27-country EU list and **9903.90** covers Russia under note 30,
+and both are absent rather than guessed. The reference is a Federal Register *search*, not a
+document number, because a document number quoted from memory would read as sourced when it
+is not.
+
+The table has no `source_fetch_id`, unlike every other table here. That is the point: these
+rows are attributable to `workflows/parsing/programmes.py` and to nothing the scraper
+fetched, and every surface showing them must mark them editorial.
+
+**Tradeoff.** This is the only place in the project where a claim comes from outside the
+three sources, and it is the one thing a reviewer cannot check against the payloads. Half of
+subchapter III stays unlabelled, which will look arbitrary to a user who does not read the
+rule. Wrong if a future revision reuses a heading family for a different action — the mapping
+is by prefix and nothing detects that.
+
+**Feeds.** SUBMISSION.md §3, §5
+
+---
+
+## D-0046 — Bound the parser's lock waits so a dead worker fails a run instead of hanging it
+**Date:** 2026-08-25 · **Area:** parser, operations · **Status:** accepted
+
+**Context.** The Hatchet Lite instance degraded mid-session and killed the worker during a
+load. Every run afterwards hung with no error anywhere. The cause, from `pg_stat_activity`:
+
+```
+pid 31206  active  wait_event_type=Client  COPY hts_base (...)      42 minutes
+pid 31767  active  wait_event_type=Lock    TRUNCATE hts_base, ...   35 minutes
+pid 31769  active  wait_event_type=Lock    TRUNCATE hts_base, ...   35 minutes
+... nine more, all waiting on the first
+```
+
+A worker killed mid-`COPY` leaves the server-side connection open holding an exclusive lock.
+Postgres waits for a client that is never coming back, and every later run queues behind it
+forever. Nothing failed, nothing logged, and the workflow simply never finished — the worst
+shape a failure can take.
+
+**Options.**
+- Nothing; it was an infrastructure blip. It will recur, and the symptom points at Hatchet
+  rather than at the lock.
+- `idle_in_transaction_session_timeout` on the database — server-wide, and this connection
+  was `active`, not idle in transaction, so it would not have caught it.
+- `lock_timeout` and `statement_timeout` on the parser's own connections.
+
+**Decision.** The third, in `parsing.connect`, so every loader inherits it:
+`lock_timeout = 10s` and `statement_timeout = 300s`. A run that cannot take the lock in ten
+seconds is not going to get it, and should go red saying so. The statement bound is generous
+against the largest real statement — a 26,246-row COPY, about four seconds.
+
+**Tradeoff.** A legitimately slow run on a loaded machine now fails where it used to wait.
+That is the trade being made deliberately: this parser holds exclusive locks for seconds, not
+minutes, so a ten-second wait means something is wrong rather than busy. It does not clean up
+the stuck backend — that still needs `pg_terminate_backend` — it only stops new runs from
+piling up invisibly behind one.
+
+**Feeds.** SUBMISSION.md §4
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

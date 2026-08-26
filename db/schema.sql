@@ -27,6 +27,7 @@ BEGIN;
 -- is why nothing here depends on embeddings.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
+DROP TABLE IF EXISTS trade_programme CASCADE;
 DROP TABLE IF EXISTS parse_issue CASCADE;
 DROP TABLE IF EXISTS note_base_match CASCADE;
 DROP TABLE IF EXISTS rule_base_match CASCADE;
@@ -412,6 +413,40 @@ CREATE TABLE note_base_match (
 );
 
 CREATE INDEX note_base_match_base_idx ON note_base_match (base_hts);
+
+
+-- ===========================================================================
+-- Editorial reference
+-- ===========================================================================
+
+-- What trade action a Chapter 99 heading family belongs to.
+--
+-- The only table here whose contents are not in the three sources. Measured: of 345 U.S.
+-- notes, exactly one names a statute, and it says "section 201" — the schedule never writes
+-- "Section 301" or "Section 232" anywhere. So `+25%, articles the product of China, as
+-- provided for in U.S. note 20(b)` tells a novice nothing about what it is or who imposed
+-- it, and the app that exists to explain Chapter 99 to a novice cannot say.
+--
+-- Seven families are labelled, and only where two tests pass: the provisions themselves
+-- state the subject matter ("Articles of aluminum or of steel…", "Automobile parts the
+-- product of Japan…"), and the attribution is public record a reader can check. Families
+-- failing either test are absent rather than guessed — 9903.89 and 9903.90 have no label.
+--
+-- `evidence` is checkable against this database. `label`, `statute` and `agency` are NOT,
+-- which is why they sit in a table of their own with no source_fetch_id: these rows are
+-- attributable to workflows/parsing/programmes.py and to nothing the scraper fetched. Every
+-- surface that shows them must mark them editorial. D-0045.
+CREATE TABLE trade_programme (
+  heading_prefix text PRIMARY KEY,     -- the 6-digit family, e.g. '9903.88'
+  label          text NOT NULL,
+  statute        text NOT NULL,
+  agency         text NOT NULL,
+  -- What the parsed rows say, so a reviewer can re-derive the grouping without trusting it.
+  evidence       text NOT NULL,
+  -- A Federal Register search, not a document id: the search is reproducible, and a
+  -- document number quoted from memory would read as sourced when it is not.
+  reference_url  text NOT NULL
+);
 
 
 -- ===========================================================================

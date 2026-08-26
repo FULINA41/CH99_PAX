@@ -10,6 +10,7 @@ from parsing.ch99 import load_ch99, parse_ch99
 from parsing.db import resolve_source_fetch_ids
 from parsing.manifest import load_manifest
 from parsing.notes import load_notes, parse_notes
+from parsing.programmes import load_programmes
 from parsing.resolve import resolve
 
 # Loading 26,246 rows takes longer than the engine's 60s default, and a task cancelled
@@ -97,9 +98,27 @@ def resolve_citations(input: ParseInput, ctx: Context) -> dict[str, Any]:
     return written
 
 
+@parse_workflow.task(parents=[parse_chapter99], execution_timeout=PARSE_TIMEOUT)
+def materialize(input: ParseInput, ctx: Context) -> dict[str, Any]:
+    # The editorial layer, rebuilt in the same run that rewrites the tables under it, so
+    # there is no window in which it is stale rather than a short one. It needs only the
+    # Chapter 99 rows, which is why it hangs off parse_chapter99 and not the resolver.
+    #
+    # Nothing is precomputed for speed here. Every screen query was measured against the
+    # loaded database first and the slowest -- a full duty stack for one code and country --
+    # runs in 44.8 ms, so the derived tables this step was planned to hold were not built.
+    # D-0044 records the measurements and why.
+    written = load_programmes()
+
+    ctx.log(f"trade_programme: {written['programmes']} programmes labelling "
+            f"{written['rules_labelled']:,} of {written['subchapter_iii_rules']:,} "
+            f"subchapter III provisions")
+    return written
+
+
 @parse_workflow.task(
     parents=[load_payloads, parse_base_schedule, parse_chapter99, parse_us_notes,
-             resolve_citations])
+             resolve_citations, materialize])
 def summarize(input: ParseInput, ctx: Context) -> dict[str, Any]:
     loaded = ctx.task_output(load_payloads)
 
@@ -113,4 +132,5 @@ def summarize(input: ParseInput, ctx: Context) -> dict[str, Any]:
         "chapter99": ctx.task_output(parse_chapter99),
         "notes": ctx.task_output(parse_us_notes),
         "resolved": ctx.task_output(resolve_citations),
+        "programmes": ctx.task_output(materialize),
     }

@@ -25,8 +25,23 @@ RETURNING id
 """
 
 
+# Every loader takes an exclusive lock -- TRUNCATE, then COPY -- and a worker killed while
+# holding one leaves the connection open server-side with the lock still held. Postgres waits
+# for a client that is never coming back, and every later run queues behind it: observed as a
+# COPY stuck 42 minutes in wait_event_type='Client' with nine TRUNCATEs stacked behind it and
+# nothing failing, anywhere. A run that cannot get the lock in ten seconds is not going to get
+# it, so it should say so and go red rather than hang. D-0046.
+LOCK_TIMEOUT_MS = 10_000
+# The bound on a single statement. The largest is a 26,246-row COPY, which takes about 4s.
+STATEMENT_TIMEOUT_MS = 300_000
+
+
 def connect(dsn: str | None = None) -> psycopg.Connection:
-    return psycopg.connect(dsn or os.environ["DATABASE_URL"])
+    conn = psycopg.connect(dsn or os.environ["DATABASE_URL"])
+    with conn.cursor() as cursor:
+        cursor.execute(f"SET lock_timeout = {LOCK_TIMEOUT_MS}")
+        cursor.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
+    return conn
 
 
 def resolve_source_fetch_ids(
