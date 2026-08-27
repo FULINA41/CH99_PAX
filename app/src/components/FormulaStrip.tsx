@@ -61,7 +61,10 @@ export function FormulaStrip({ stack }: { stack: DutyStack }) {
     />,
   ];
 
-  for (const layer of stack.reductions.concat(stack.layers)) {
+  // Only what the total is actually made of. The reductions never reach combine(), so a
+  // reduction drawn as a term between the base and the "=" is an operand the figure never
+  // used -- and a code carrying 34 of them drew 34 of those.
+  for (const layer of stack.layers) {
     const mark = MARKS[layer.term.operator];
     cells.push(
       <Cell
@@ -71,6 +74,18 @@ export function FormulaStrip({ stack }: { stack: DutyStack }) {
         label={layer.hts}
         lines={[layer.programme?.label ?? mark.note]}
         href={`#${layer.hts}`}
+      />,
+    );
+  }
+
+  if (stack.reductions.length > 0) {
+    cells.push(
+      <Cell
+        key="reductions" sign="±" tone="text-flat" value="0"
+        label={`${stack.reductions.length} duty reduction${
+          stack.reductions.length === 1 ? "" : "s"}`}
+        lines={["could stand in for the base rate", "if your goods are the ones named"]}
+        href="#reductions"
       />,
     );
   }

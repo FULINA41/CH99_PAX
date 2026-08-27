@@ -31,11 +31,31 @@ OPERATORS: dict[RateKind, str] = {
 CUMULATIVE_INSTEAD: dict[str, str] = {"replace": "add", "free": "add"}
 
 ASSUMPTION = (
-    "Assumes every duty listed applies at once and that none of the exclusions covers your "
-    "goods. The schedule states how each duty combines with the ordinary rate — that is read "
-    "here — but which 9903 line goes on which entry line is set by CBP in its filing "
+    "Assumes every duty in this figure applies at once and that none of the exclusions covers "
+    "your goods. The schedule states how each duty combines with the ordinary rate — that is "
+    "read here — but which 9903 line goes on which entry line is set by CBP in its filing "
     "instructions, and that is not in this data."
 )
+
+# combine() is never handed the reductions, so the figure is silent about them. A page that
+# lists 34 and says "every duty listed applies at once" contradicts its own section heading.
+REDUCTIONS_ASIDE = (
+    " The duty reductions below are alternatives to the base rate rather than additions to it, "
+    "so they are not in this figure — which one applies, if any, depends on what the goods are."
+)
+
+
+def assumption(reductions: list[Layer]) -> str:
+    """Say what the figure took for granted, raising only what this query actually has.
+
+    Args:
+        reductions: The subchapter II provisions found for the query, which never reach
+            ``combine`` and so need saying that the total left them out.
+
+    Returns:
+        The sentence printed under the total.
+    """
+    return ASSUMPTION + (REDUCTIONS_ASIDE if reductions else "")
 
 
 def term(

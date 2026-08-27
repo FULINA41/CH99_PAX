@@ -49,8 +49,8 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "Several duty reductions cite my code. Which one is mine?",
         "why": (
             "Subchapter II provisions are told apart by what the goods are, not by how they "
-            "classify — four provisions cite 2922.49.30, each naming a different substance "
-            "by CAS registry number. The HTS code cannot choose between them. D-0019."
+            "classify. Several cite the same subheading, each naming a different substance by "
+            "CAS registry number, and the tariff code cannot choose between them."
         ),
         "source_name": "your product's CAS registry number, against the numbers listed here",
         "url": HTS,

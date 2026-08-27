@@ -2582,3 +2582,54 @@ numbered entry above once decided — do not decide them here.
   while this one names the base itself. `rate_kind` has no operator for it and it stays
   `prose`. One row today; decide whether a `rate_base_hts` column earns its place, or
   whether `rule_edge` already carries enough to reconstruct it.
+
+## D-0061 — Draw only the total's own operands in the figure
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** `combine()` is handed `layers` and never `reductions`, so a subchapter II
+provision has never contributed to the printed total. `FormulaStrip` nonetheless drew every
+reduction as a term between the base and the `=`, marked `→ stands in for the base rate`.
+On `/duty/3808.92.15.00?country=DE` that produced **34 consecutive `→ Free` cells followed by
+`= 6.5%`** — the figure claimed thirty-four replacements and then printed the unreplaced base.
+The caption under it said `Assumes every duty listed applies at once` while the section heading
+one screen below said `These are alternatives, not a stack`.
+
+**Options.**
+- Feed the reductions into `combine()` — wrong: they are alternatives, and summing or
+  min-ing them invents a choice between substances the tariff code cannot make.
+- Cap the strip at N cells and print "+26 more" — hides the contradiction rather than fixing it.
+- Draw only what the total is made of, and summarise the rest in one cell.
+
+**Decision.** The strip iterates `stack.layers` alone. Reductions collapse into a single
+`± 0 · N duty reductions` cell linking to `#reductions`, structurally identical to the
+exclusions cell that was already there. `ASSUMPTION` now reads "every duty **in this figure**",
+and `assumption(reductions)` appends the alternatives sentence only when the query raised any.
+
+**Tradeoff.** A page with exactly one reduction no longer shows its rate in the strip, which
+costs a glance. It is the right cost: that rate was never in the total either, and printing it
+as a term implied it was. This becomes wrong if reductions ever enter `combine()` — the
+caption and the cell would then both need to change with it.
+
+**Feeds.** SUBMISSION.md §2
+
+## D-0062 — Static copy may not assert facts about the query it renders on
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** `UNKNOWNS` is a static dict rendered whenever a key is raised. The `alternatives`
+entry read "four provisions cite 2922.49.30" — true of the worked example it was written
+against, false everywhere else. `/duty/3808.92.15.00?country=DE` raises that key with **34**
+reductions and told the reader about a code with no relation to the page.
+
+**Options.**
+- Template the sentence from the query (count, subheading) — more machinery than the point needs.
+- State the rule generically and let `related_hts` carry the instance.
+
+**Decision.** The copy states the rule and names no code; the codes under each entry already
+come from `related_hts`. `api/tests/test_wording.py` pins it: no `UNKNOWNS` entry's prose may
+contain an HTS-shaped string.
+
+**Tradeoff.** The generic sentence is less vivid than a worked instance. The guard test is a
+blunt regex and would reject a legitimate example code if one were ever wanted — at which point
+the example belongs in the page, not in copy shared by every query.
+
+**Feeds.** SUBMISSION.md §5

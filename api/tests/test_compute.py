@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from conftest import layer
-from duty.compute import combine, term
+from duty.compute import assumption, combine, term
 
 
 def base(kind: str = "free", pct: str = "0", **rest):
@@ -92,3 +92,16 @@ def test_a_replacement_resolves_before_additions_whatever_order_it_arrives_in():
     backwards = combine(start, [replace, add])[1]
 
     assert forwards == backwards == Decimal("25")
+
+
+def test_the_assumption_says_the_reductions_are_left_out_of_the_figure():
+    # combine() is never handed the reductions, so a blanket "every duty listed applies at
+    # once" contradicts both the figure and the section heading below it, which calls them
+    # alternatives. A page carrying 34 of them said both things at once.
+    said = assumption([layer(kind="free", pct="0")])
+
+    assert "alternatives" in said and "not in this figure" in said
+
+
+def test_the_assumption_stays_silent_about_reductions_when_the_query_raised_none():
+    assert "alternatives" not in assumption([])

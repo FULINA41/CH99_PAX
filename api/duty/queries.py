@@ -157,11 +157,44 @@ ORDER BY rn.rule_hts, n.label
 # full text finds "steel plate hot-rolled" in a description written in that order, and
 # trigram finds a misspelling or a fragment that stemming will not reach. Neither knows what
 # a product is -- this matches prose, and classification stays the importer's job.
+
+# Which trade actions mention a code, named rather than counted -- "Section 301 — China" tells
+# a reader something and "1 trade programme reaches this code" does not.
 #
-# The programme count is computed live. Measured at 3.8 ms for a page of 30 codes, against
-# 1,568 ms for the coverage figure a duty page needs; the difference is cardinality, and
-# D-0047 is about telling those two cases apart.
-SEARCH = """
+# Filtered the same three ways the duty page filters, because a badge that says a programme
+# reaches your code while the duty page then shows nothing is the same defect as D-0056 wearing
+# a different hat:
+#
+#   * out of force, by status and by the date window;
+#   * origin, by rule.origin_scope -- a Section 301 provision does not reach a German shipment
+#     however well its codes match;
+#   * and when the caller named no country, nothing is filtered on origin, because "which
+#     actions mention this code at all" is a fair question to ask without one.
+#
+# One subquery shared by all three search paths. The count was live at 3.8 ms for a page of 30
+# codes, against 1,568 ms for the coverage figure a duty page needs; the difference is
+# cardinality, and D-0047 is about telling those two cases apart.
+PROGRAMMES = """(
+    SELECT array_agg(DISTINCT p.label) FROM (
+        SELECT rule_hts FROM rule_base_match WHERE base_hts = hit.hts
+        UNION
+        SELECT rn.rule_hts FROM note_base_match nbm
+          JOIN rule_note rn ON rn.note_id = nbm.note_id
+        WHERE nbm.base_hts = hit.hts
+    ) reach
+    JOIN rule r ON r.hts = reach.rule_hts
+    JOIN trade_programme p ON p.heading_prefix = left(reach.rule_hts, 7)
+    WHERE r.status = 'in_force'
+      AND (r.effective_from IS NULL OR r.effective_from <= current_date)
+      AND (r.effective_to   IS NULL OR r.effective_to   >= current_date)
+      AND (%(country)s::text IS NULL
+           OR r.origin_scope <> 'named'
+           OR EXISTS (SELECT 1 FROM rule_country c
+                      WHERE c.rule_hts = r.hts AND c.relation = 'product_of'
+                        AND c.country_code = %(country)s))
+) AS programmes"""
+
+SEARCH = f"""
 WITH hit AS (
     SELECT b.hts, b.full_description, b.units,
            b.rate_text, b.rate_kind, b.rate_ad_valorem_pct,
@@ -171,33 +204,32 @@ WITH hit AS (
     ORDER BY rank DESC, length(b.full_description)
     LIMIT %(limit)s
 )
-SELECT hit.*, (
-    SELECT count(DISTINCT p.heading_prefix) FROM (
-        SELECT rule_hts FROM rule_base_match WHERE base_hts = hit.hts
-        UNION
-        SELECT rn.rule_hts FROM note_base_match nbm
-          JOIN rule_note rn ON rn.note_id = nbm.note_id
-        WHERE nbm.base_hts = hit.hts
-    ) reach
-    JOIN trade_programme p ON p.heading_prefix = left(reach.rule_hts, 7)
-) AS programmes
+SELECT hit.*, {PROGRAMMES}
 FROM hit ORDER BY rank DESC
 """
 
-SEARCH_FUZZY = """
-SELECT b.hts, b.full_description, b.units, b.rate_text, b.rate_kind, b.rate_ad_valorem_pct,
-       similarity(b.full_description, %(q)s) AS rank, 0 AS programmes
-FROM hts_base b
-WHERE b.full_description %% %(q)s
-ORDER BY rank DESC LIMIT %(limit)s
+# Someone pasting a code from an invoice gets the same badge as someone typing words. It used
+# to get a hard-coded zero, so the same code answered two ways depending on how it was found.
+SEARCH_CODE = f"""
+WITH hit AS (
+    SELECT b.hts, b.full_description, b.units,
+           b.rate_text, b.rate_kind, b.rate_ad_valorem_pct, 1 AS rank
+    FROM hts_base b WHERE b.hts LIKE %(prefix)s
+    ORDER BY b.hts LIMIT %(limit)s
+)
+SELECT hit.*, {PROGRAMMES}
+FROM hit ORDER BY hts
 """
 
-
-# The eligibility conditions a matched provision states about the base rate. Evaluated in
-# Python against the classified good's Column 1 rate, because the judgement has to be shown
-# on screen next to the sentence it came from, not buried in a WHERE clause (D-0057).
-CONDITIONS = """
-SELECT rule_hts, kind, operator, value, verbatim
-FROM rule_condition WHERE rule_hts = ANY(%(rules)s)
-ORDER BY rule_hts, kind, value
+SEARCH_FUZZY = f"""
+WITH hit AS (
+    SELECT b.hts, b.full_description, b.units,
+           b.rate_text, b.rate_kind, b.rate_ad_valorem_pct,
+           similarity(b.full_description, %(q)s) AS rank
+    FROM hts_base b
+    WHERE b.full_description %% %(q)s
+    ORDER BY rank DESC LIMIT %(limit)s
+)
+SELECT hit.*, {PROGRAMMES}
+FROM hit ORDER BY rank DESC
 """

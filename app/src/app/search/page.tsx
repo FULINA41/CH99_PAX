@@ -8,7 +8,7 @@ type Result = {
   rate_text: string | null;
   rate_kind: string;
   rate_ad_valorem_pct: string | null;
-  programmes: number | null;
+  programmes: string[] | null;
 };
 
 type Results = { query: string; matched_by: "words" | "code" | "spelling"; results: Result[] };
@@ -24,8 +24,13 @@ export default async function SearchPage(
 ) {
   const { q, country } = await searchParams;
   const countries = await api<Countries>("/countries");
+  // The origin goes to the API, not just into the links: without it the results would name
+  // trade actions that cannot reach these goods from this country, and the duty page one
+  // click later would show none of them.
   const found = q
-    ? await api<Results>(`/search?q=${encodeURIComponent(q)}`)
+    ? await api<Results>(
+        `/search?q=${encodeURIComponent(q)}${country ? `&country=${country}` : ""}`,
+      )
     : null;
 
   const to = (hts: string) =>
@@ -99,6 +104,16 @@ export default async function SearchPage(
             {MATCHED[found.matched_by]}
           </h2>
 
+          {found.results.some((row) => row.programmes?.length) && (
+            <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">
+              A tag names a trade action with a Chapter 99 provision that mentions the code
+              {country ? " and reaches goods from this origin" : ""} — not a duty you will
+              pay. Whether one covers your goods is what the code&rsquo;s own page works out.
+              The names are this site&rsquo;s attribution; the schedule never states one.
+              <span className="text-faint"> · editorial</span>
+            </p>
+          )}
+
           <ul className="mt-4">
             {found.results.map((row) => (
               <li key={row.hts} className="border-t border-rule py-4">
@@ -107,12 +122,15 @@ export default async function SearchPage(
                   <span className="font-mono text-sm tabular text-muted">
                     {row.rate_text || "—"}
                   </span>
-                  {row.programmes ? (
-                    <span className="rounded-sm bg-raise-soft px-2 py-0.5 text-xs text-raise">
-                      {row.programmes} trade programme{row.programmes === 1 ? "" : "s"}{" "}
-                      {row.programmes === 1 ? "reaches" : "reach"} this code
+                  {row.programmes?.map((programme) => (
+                    <span
+                      key={programme}
+                      className="rounded-sm bg-raise-soft px-2 py-0.5 text-xs text-raise"
+                      title="Named by this site, not by the schedule — see the code's own page"
+                    >
+                      {programme}
                     </span>
-                  ) : null}
+                  ))}
                 </a>
                 <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-muted">
                   {row.full_description}

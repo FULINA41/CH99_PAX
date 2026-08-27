@@ -1950,3 +1950,50 @@ identical — `stored ('6.8%',replace,6.8) vs payload ('6.8%',replace,6.8)`. I n
 28% parser failure rate. The tell was that the printed values matched; the fields I compared
 but did not print were where the difference lived. **A check that fails has to be checked
 before it is believed** — and printing less than you compare is how you end up unable to.
+
+## 2026-08-27 — UI review, and the first of its fixes
+
+**A read-through of the rendered app, not the source.** Rendered every page type to plain
+text (`/`, `/rule`, `/note`, `/duty`, `/search`) including the awkward rows — `rate_kind`
+`prose`, `scope` `unknown`, `status` `suspended` and `terminated` — because the source reads
+better than the page does. Findings fell into four groups: implementation vocabulary printed
+to users, monospace no longer meaning "identifier", seven real defects, and two palette tokens
+below WCAG AA. The full list is in the review; this entry records only what was acted on.
+
+**Branch `ui-polish`, off `46efd7d`.** The session's opening git snapshot was stale — two
+commits (`cea503d`, `46efd7d`) landed while the review was running, changing `compute.py`,
+`explain.py` and `sources.py` among others. Caught it when `compute.py` on disk did not match
+the `ASSUMPTION` text the browser had just shown me. **Re-verified every finding against HEAD
+before touching anything**; all of them still reproduced, and the running containers had by
+then picked up the new code, so the rendered evidence below is from current source.
+
+**Three defects fixed, all of which made the page state something untrue.**
+
+- `/duty/3808.92.15.00?country=DE` drew **34 `→ Free` cells** between the base and the `=`,
+  then printed `= 6.5%`. `combine()` never receives `reductions`, so every one of those cells
+  was an operand the total had not used. Now one `± 0 · 34 duty reductions` cell. Verified by
+  re-render: `6.5% (Column 1 General) ± 0 (34 duty reductions) = 6.5%`.
+- The caption said `Assumes every duty listed applies at once`; the heading below said
+  `These are alternatives, not a stack`. `assumption(reductions)` now appends the alternatives
+  sentence only when the query has any — confirmed present on the 34-reduction page and absent
+  on `/duty/7208.51.00.30?country=DE`, which has none.
+- `UNKNOWNS["alternatives"]` told every reader "four provisions cite 2922.49.30". Test written
+  first, failed with `assert {'alternatives': ['2922.49']} == {}`, then the copy was made
+  generic.
+
+**Verified:** `cd api && uv run pytest` → **21 passed**. `docker compose exec -T app npx tsc
+--noEmit` → clean, exit 0. The three worked examples on the home page re-rendered and read
+correctly, the arithmetic now legible on the second one: `6.5% + 10% + 10% + 10% = 36.5%`,
+which was previously interrupted by four `→ Free` cells.
+
+**Not yet done, and named so it is not mistaken for finished:** the `rate_kind`/`scope`/
+`status` enum leakage on `/rule`, the five `D-00xx` decision IDs printed in `UNKNOWNS` prose,
+the monospace and vocabulary work, duplicate `citing` rows and the React key collision they
+cause, mid-word truncation, per-page `<title>`, and the `text-faint` (3.27:1) and
+`border-rule-strong` (1.82:1) contrast failures.
+
+**Agent note.** The stale-snapshot catch was luck, not method: I noticed only because I had
+quoted the old `ASSUMPTION` verbatim in the review and the string had changed under me. Had the
+edit been to a line I had not quoted, I would have written the fix against a file that no longer
+existed. Re-reading HEAD before editing is cheap; assuming a session-start snapshot still holds
+is not.

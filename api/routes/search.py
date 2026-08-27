@@ -15,6 +15,8 @@ LOOKS_LIKE_A_CODE = re.compile(r"^\d{4}(\.\d{2}){0,3}$")
 @router.get("/search")
 def search(
     q: str = Query(min_length=2, description="Words from the schedule's description of a good"),
+    country: str | None = Query(default=None, min_length=2, max_length=2,
+                                description="ISO 3166-1 alpha-2 country of origin"),
     limit: int = Query(default=40, ge=1, le=100),
 ) -> dict:
     """Find candidate base-schedule codes by the schedule's own wording.
@@ -26,27 +28,30 @@ def search(
 
     Args:
         q: Search words, or a code pasted straight in.
+        country: Origin, used only to decide which trade actions are named against a result.
+            Without one, every action that mentions the code is named, which is a fair answer
+            to a question asked without an origin. With one, the same origin filter the duty
+            page applies is applied here, so the two cannot disagree.
         limit: How many candidates to return.
 
     Returns:
         The candidates, which pass matched them, and whether the input looked like a code.
     """
     cleaned = q.strip()
+    origin = country.upper() if country else None
+
     if LOOKS_LIKE_A_CODE.match(cleaned):
-        found = rows(
-            "SELECT hts, full_description, units, rate_text, rate_kind, rate_ad_valorem_pct,"
-            " 1 AS rank, 0 AS programmes FROM hts_base WHERE hts LIKE %(prefix)s"
-            " ORDER BY hts LIMIT %(limit)s",
-            {"prefix": f"{cleaned}%", "limit": limit},
-        )
+        found = rows(queries.SEARCH_CODE,
+                     {"prefix": f"{cleaned}%", "country": origin, "limit": limit})
         return {"query": cleaned, "matched_by": "code", "results": found}
 
-    found = rows(queries.SEARCH, {"q": cleaned, "limit": limit})
+    found = rows(queries.SEARCH, {"q": cleaned, "country": origin, "limit": limit})
     if found:
         return {"query": cleaned, "matched_by": "words", "results": found}
 
     return {
         "query": cleaned,
         "matched_by": "spelling",
-        "results": rows(queries.SEARCH_FUZZY, {"q": cleaned, "limit": limit}),
+        "results": rows(queries.SEARCH_FUZZY,
+                        {"q": cleaned, "country": origin, "limit": limit}),
     }

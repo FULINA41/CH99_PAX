@@ -6,7 +6,7 @@ import pycountry
 from db import one, rows
 from duty import queries
 from duty.applicable import applicable
-from duty.compute import ASSUMPTION, combine, term
+from duty.compute import assumption, combine, term
 from models import (BaseRate, Classification, DutyStack, ExclusionGroup, Layer, Query,
                     Term, Total, Unknown)
 from reference.column2 import COLUMN_2_COUNTRIES, column_for
@@ -133,7 +133,7 @@ def explain(
         inactive=inactive,
         total=Total(
             expression=expression, ad_valorem_pct=percent, specific_terms=specific,
-            amount_usd=money, assumption=ASSUMPTION,
+            amount_usd=money, assumption=assumption(reductions),
             ceiling_expression=ceiling[0] if ceiling else None,
             ceiling_ad_valorem_pct=ceiling[1] if ceiling else None,
             ceiling_amount_usd=ceiling[3] if ceiling else None,
