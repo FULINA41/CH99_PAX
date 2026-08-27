@@ -23,7 +23,7 @@ export default async function NotePage({
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
-      <a href="/" className="font-mono text-xs text-faint hover:text-muted">← Chapter 99</a>
+      <a href="/" className="text-xs text-faint hover:text-muted">← Chapter 99</a>
 
       <header className="mt-6">
         <h1 className="font-serif text-3xl tracking-tight text-ink">{note.label}</h1>
@@ -52,7 +52,7 @@ export default async function NotePage({
             <a
               key={sibling.id}
               href={`/note/${sibling.id}`}
-              className={`font-mono text-sm ${
+              className={`text-sm ${
                 sibling.id === note.id
                   ? "text-ink underline decoration-ink underline-offset-4"
                   : "text-muted hover:text-ink"
@@ -143,7 +143,7 @@ export default async function NotePage({
                 >
                   {cite.rule_hts}
                 </a>
-                <span className="font-mono text-sm text-muted">{cite.rate_text || "—"}</span>
+                <span className="text-sm text-muted">{cite.rate_text || "—"}</span>
                 {cite.programme && (
                   <span className="rounded-sm bg-raised px-2 py-0.5 text-xs text-muted">
                     {cite.programme}

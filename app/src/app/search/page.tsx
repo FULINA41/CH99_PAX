@@ -38,7 +38,7 @@ export default async function SearchPage(
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
-      <a href="/" className="font-mono text-xs text-faint hover:text-muted">← Chapter 99</a>
+      <a href="/" className="text-xs text-faint hover:text-muted">← Chapter 99</a>
 
       <h1 className="mt-6 font-serif text-3xl tracking-tight text-ink">Find a code</h1>
 
@@ -110,7 +110,6 @@ export default async function SearchPage(
               {country ? " and reaches goods from this origin" : ""} — not a duty you will
               pay. Whether one covers your goods is what the code&rsquo;s own page works out.
               The names are this site&rsquo;s attribution; the schedule never states one.
-              <span className="text-faint"> · not in the schedule</span>
             </p>
           )}
 

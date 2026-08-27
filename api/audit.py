@@ -99,6 +99,11 @@ def badge_agrees(stack, country: str | None, rows) -> list[str]:
     of the two -- which is exactly how it drifted: it once ignored origin entirely and named
     "Section 301 - China" one click away from a duty page showing nothing.
     """
+    # Only where an origin was given. Without one the badge deliberately names every action
+    # that mentions the code, while the duty page vetoes the origin-keyed ones -- the two
+    # answer different questions and the page's own wording says which.
+    if country is None:
+        return []
     named = rows(_badge_sql(), {"hts": stack.classification.hts, "country": country})
     badge = set(named[0]["programmes"] or []) if named else set()
     shown = {layer.programme.label

@@ -25,9 +25,10 @@ function rate(term: Term): string {
 }
 
 function Cell({
-  sign, tone, value, label, lines, href,
+  sign, tone, value, label, lines, href, code = false,
 }: {
   sign: string; tone: string; value: string; label: string; lines: string[]; href?: string;
+  code?: boolean;
 }) {
   const head = (
     <span className={`font-mono text-2xl font-medium tabular ${tone}`}>
@@ -38,7 +39,7 @@ function Cell({
   return (
     <div className="min-w-[8.5rem] flex-1 border-t-2 border-rule pt-2 first:border-rule-strong">
       {href ? <a href={href} className="hover:underline">{head}</a> : head}
-      <div className="mt-1 font-mono text-xs text-muted">{label}</div>
+      <div className={`mt-1 text-xs text-muted ${code ? "font-mono" : ""}`}>{label}</div>
       {lines.map((line) => (
         <div key={line} className="text-xs leading-snug text-faint">{line}</div>
       ))}
@@ -74,6 +75,7 @@ export function FormulaStrip({ stack }: { stack: DutyStack }) {
         label={layer.hts}
         lines={[layer.programme?.label ?? mark.note]}
         href={`#${layer.hts}`}
+        code
       />,
     );
   }
@@ -111,7 +113,8 @@ export function FormulaStrip({ stack }: { stack: DutyStack }) {
             <span aria-hidden className="mr-1 text-faint">=</span>
             {total.expression}
           </div>
-          <div className="mt-1 font-mono text-xs text-muted">
+          <div className={`mt-1 text-xs text-muted ${
+            total.amount_usd ? "font-mono tabular" : ""}`}>
             {total.amount_usd ? money(total.amount_usd) : "needs a declared value"}
           </div>
           {total.ceiling_expression && (

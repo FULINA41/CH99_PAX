@@ -24,10 +24,11 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
-      <a href="/" className="font-mono text-xs text-faint hover:text-muted">← Chapter 99</a>
+      <a href="/" className="text-xs text-faint hover:text-muted">← Chapter 99</a>
 
       <header className="mt-6">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+        <p className="text-xs uppercase tracking-wide text-faint">Chapter 99 provision</p>
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <h1 className="font-mono text-3xl font-medium tracking-tight text-ink">{rule.hts}</h1>
           {rule.label && (
             <span className="rounded-sm bg-raised px-2 py-1 text-xs text-muted">
@@ -47,7 +48,7 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
         <h2 className="font-serif text-xl text-ink">What it does</h2>
         <dl className="mt-3">
           <Row label="Rate, as printed">
-            <span className="font-mono text-ink">{rule.rate_text || "— none printed —"}</span>
+            <span className="text-ink">{rule.rate_text || "— none printed —"}</span>
           </Row>
           <Row label="Read as">
             <span className="text-ink">{rule.rate_kind_reading}</span>
@@ -117,8 +118,11 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
         </p>
 
         {detail.cited_codes.length > 0 && (
-          <p className="mt-3 font-mono text-sm text-muted">
-            Cites: {detail.cited_codes.map((c) => c.cited_code).join(" · ")}
+          <p className="mt-3 text-sm text-muted">
+            Names in chapters 1&ndash;97:{" "}
+            <span className="font-mono">
+              {detail.cited_codes.map((c) => c.cited_code).join(" · ")}
+            </span>
           </p>
         )}
 
@@ -144,7 +148,7 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
                 </span>
                 <div className="mt-1 text-xs">
                   <span className="text-faint">cited as</span>{" "}
-                  <span className="font-mono text-muted">“{note.cited_text}”</span>
+                  <span className="text-muted">“{note.cited_text}”</span>
                   {note.match_precision === "parent_fallback" && (
                     <span className="ml-2 text-unsure">
                       — it names subdivision {note.cited_subdivision}, which could not be
@@ -177,11 +181,11 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
                   <th className="pb-1 font-medium">how</th>
                 </tr>
               </thead>
-              <tbody className="font-mono">
+              <tbody>
                 {detail.sample.map((row) => (
                   <tr key={`${row.base_hts}-${row.cited_code}`} className="border-t border-rule">
-                    <td className="py-1 text-muted">{row.base_hts}</td>
-                    <td className="py-1 text-faint">{row.cited_code}</td>
+                    <td className="py-1 font-mono text-muted">{row.base_hts}</td>
+                    <td className="py-1 font-mono text-faint">{row.cited_code}</td>
                     <td className="py-1 text-faint">{row.path} · {row.how}</td>
                   </tr>
                 ))}

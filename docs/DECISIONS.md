@@ -2662,3 +2662,37 @@ permitted value is what keeps them together — it fails on a schema change, whi
 gap would otherwise open. It does not catch a reading that is merely wrong.
 
 **Feeds.** SUBMISSION.md §2, §5
+
+## D-0064 — Monospace means identifier, and a bare number says which kind it is
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** 39 spans carried `font-mono`; about 15 held something that was not an identifier —
+the `← Chapter 99` back link, a provision's `rate_text` ("The duty provided in the applicable
+subheading + 25%"), a quoted citation, the words "whole note" in the note nav, "needs a
+declared value" under the total. With monospace meaning both "identifier" and "value out of the
+database", it could not be used to recognise a code. Worse, the two families of number are
+drawn identically: `/rule/9903.88.04` and `/duty/7208.51.00.30` both open on a bare mono number,
+though one modifies goods and the other classifies them — the distinction the whole site exists
+to teach.
+
+**Options.**
+- A glyph or colour on Chapter 99 numbers — a legend to learn, and colour alone is not a cue.
+- Prefix every 9903 link with the word "heading" — accurate but heavy in a list of thirteen.
+- Keep monospace for identifiers only, and label the page subject in words.
+
+**Decision.** `font-mono` follows the content, not the slot: `Cell` takes a `code` flag so the
+label under a formula term is monospaced when it is a provision number and not when it is
+"34 duty reductions"; the total's second line is monospaced only when it is money. Both detail
+pages open with a kicker — `Chapter 99 provision`, `Classified good · chapters 1–97`. The rule
+page's `Cites:` became `Names in chapters 1–97:`, which says which schedule the numbers belong
+to instead of leaving it to be inferred.
+
+**Tradeoff.** The kicker costs a line of vertical space above the fold on every detail page.
+Nothing yet distinguishes the two families *inside* running prose, where a provision's own
+description names a dozen other provisions as plain text — labelling those needs the parser to
+mark them up, which is a bigger change than this one.
+
+**Feeds.** SUBMISSION.md §2
+
+Search-page wording ("trade programme") had already been superseded on `task3` by the tag
+treatment in `cea503d`, so only the duplicated "not in the schedule" marker was removed there.

@@ -63,10 +63,15 @@ export default async function DutyPage(
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
-      <a href="/" className="font-mono text-xs text-faint hover:text-muted">← Chapter 99</a>
+      <a href="/" className="text-xs text-faint hover:text-muted">← Chapter 99</a>
 
       <header className="mt-6">
-        <h1 className="font-mono text-3xl font-medium tracking-tight text-ink">{good.hts}</h1>
+        <p className="text-xs uppercase tracking-wide text-faint">
+          Classified good · chapters 1&ndash;97
+        </p>
+        <h1 className="mt-1 font-mono text-3xl font-medium tracking-tight text-ink">
+          {good.hts}
+        </h1>
         <p className="mt-3 max-w-prose text-[0.95rem] leading-relaxed text-ink">
           {good.full_description}
         </p>
