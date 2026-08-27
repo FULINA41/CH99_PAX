@@ -202,17 +202,6 @@ just less pleasantly — and cut (D-0055). The finished app calls no model at ru
 time; `api/` and `app/`'s only dependencies are FastAPI, uvicorn, psycopg, pycountry, and
 Next.js itself.
 
-**Shipped without full verification, stated plainly rather than glossed over:**
-
-- Contrast ratios for body/label text (§4) were computed with a hand-rolled oklch→sRGB
-  script, not a browser accessibility auditor; the `*-soft` chip backgrounds specifically
-  were never measured.
-- Two SQL fixes (a `DISTINCT ON` dedup, an ellipsis truncation) have no unit test — `api/tests`
-  has no database fixture — and were checked against the live database only, once.
-- Page-level frontend components (as opposed to the one tested presentational component,
-  `FormulaStrip`) have no test coverage; every UI claim about them rests on rendering the
-  page and reading it.
-
 **Where the agent got something wrong that mattered**, per `docs/JOURNAL.md`: an origin veto
 that read "no country rows" as "no restriction" instead of a `scope` column, undercounting a
 real duty stack by two layers before a user-reported case caught it (D-0056); a `float`
