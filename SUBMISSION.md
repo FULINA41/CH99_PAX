@@ -138,31 +138,23 @@ natural-language querying, no agent. `docs/PART3_APP.md` §11 has the full list 
 
 ## 4. What you'd do with another week
 
-- **Three residues in `parse_issue` are visible but unfixed**: 280 rows where a citation
-  named a subdivision the PDF segmenter couldn't isolate (`subdivision_not_segmented`,
-  D-0038 — the citation falls back to the parent note, which is wider than the text asked
-  for); 226 cited codes that resolve to no row in this revision (`unresolved_code`); and
-  1 note citation matching no note at all. (Of `rule_note`'s 982 citations, 127 are
-  unlinked — 126 of those correctly point at another chapter's note, out of scope by
-  design, leaving that 1 genuine miss.)
-- **`special` (Column 1 preferential rates) is stored as printed and never interpreted**
-  (D-0027) — needs the HTS General Notes' SPI table and rules of origin, none of which are in
-  these three sources. Every FTA-eligible query currently under-states what a qualifying
-  importer could actually pay.
-- **Stacking order between simultaneous §232/§301 actions is asserted, not sourced** past
-  what a governing note states explicitly (D-0058) — where two provisions are both
-  uncertain replacements, the site reports a range rather than picking one, which is honest
-  but not an answer.
-- **Frontend has thin test coverage** — `vitest` covers one component (`FormulaStrip`,
-  D-0070, added after a dead anchor link shipped for two commits undetected); the page
-  components themselves fetch and are untested, because there's no request fixture yet.
-- **Contrast was checked with a hand-rolled oklch→sRGB script**, not a browser audit tool,
-  and the `*-soft` chip backgrounds were never measured (§6).
-- **One resident revision** (D-0020) — re-parsing overwrites in place; historical payloads
-  survive on disk in `data/raw/` but aren't queryable without a re-parse.
-- **Expired provisions aren't marked** — the PDF signals expiry with grey shading, which
-  text extraction destroys, and the JSON export has no date field; only provisions that state
-  a date in their own prose are dated (D-0043).
+- **Ground-truth validation.** `api/audit.py` checks internal properties over 20,000
+  synthetic queries — ranges never invert, no term is ever assigned a precision the source
+  doesn't have — but nothing in the project compares an answer against a real determination:
+  a CBP ruling, a broker's actual duty calculation, a filed entry. Sourcing even a handful of
+  those and checking against them would catch a class of error internal consistency can't see.
+- **An LLM feature, used two ways.** First, real classification: turning a natural-language
+  product description into candidate HTS codes, rather than today's `/search`, which only
+  matches the schedule's own wording and says so. Second, reading the `rate_kind = 'prose'`
+  rows this parser cannot compute today. Given how irregular the stacking and exception rules
+  actually are, feeding more domain knowledge into an agent rather than a single-shot parse
+  is probably where the real gain is.
+- **Memory and runtime were never profiled end to end.** `rule_coverage` exists because one
+  query was measured and found slow (D-0047), but that was one query on one page; a
+  systematic pass over the app under load hasn't been done, and I'd want the time to run one
+  and tune whatever it finds.
+- **The UI was built on a deadline and it shows.** Several layout and interaction choices
+  need a real design pass rather than another pass by the person who shipped them.
 
 ## 5. Assumptions
 
