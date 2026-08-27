@@ -2169,3 +2169,49 @@ the resident release and moved every number in the repository before I had asked
 checked `currentRelease` before touching anything only because the counts are load-bearing for
 the documents — not because I had planned to. The habit worth keeping is the one I got right by
 accident: **look at what a destructive command will actually fetch before running it.**
+
+## 2026-08-27 (later still) — the equation stops pretending exclusions are arithmetic
+
+**Branch `ui-equation`, off `task3` at `03f231b` — not off `main`.** The request was to branch
+from main on the understanding it was current. It is not: `main` is at `49df914`, and the whole
+of Part 3 — `app/`, `api/`, `FormulaStrip.tsx` itself — lives only on `task3`. Branching from
+main would have produced a branch without the file to edit. Said so and branched from `task3`.
+
+**What was wrong.** `Free + 25% ± 20 exclusions = 25%`. The exclusion cell was a term of value
+zero sitting in a row of arithmetic terms, for something that is not arithmetic: an HTS match
+identifies exclusions that *might* apply, and which one does is a question about the goods. The
+row also drew a base rate and a Chapter 99 provision as peers when they come from different
+schedules.
+
+**Built the missing test runner first.** `app/` had none, so vitest with jsdom went in before
+any of this — `docker compose exec -T app npx vitest run`, recorded in CLAUDE.md. Six tests
+written and watched fail: no exclusion term in the calculation, no reduction term either, the
+notice and its `href`, the three labels, and the two empty cases. Five failed as expected; the
+sixth ("a shipment with no exclusions is told nothing about exclusions") passed immediately
+because the empty case already held — kept as a guard on the new notice, and noted here rather
+than dressed up as a red-green cycle it never went through.
+
+**The test runner earned itself inside ten minutes.** `href="#exclusions"` had been a dead link
+all along: `Collapsed` took no `id` and dropped it, so the anchor never existed. Two commits of
+mine had shipped that link while I "verified by rendering the page" — a dead anchor renders
+exactly like a live one. `Collapsed` now takes an `id`; `#exclusions` and `#inactive` resolve.
+
+**Widened one thing beyond the request, deliberately.** The brief named exclusions. The
+reductions cell had the same defect for the same reason — `combine()` never sees either — so
+leaving a `± 0 · 34 duty reductions` cell inside a group labelled "Chapter 99 adjustments"
+would have re-created the problem one column over. Both moved to the same band.
+
+**Verified.** `app` 6 passed · `api` 24 passed · `workflows` 134 passed · `tsc --noEmit` clean.
+Rendered four shapes: one adjustment with 20 exclusions; no adjustments at all (base `=` result,
+no dangling arrow); 34 reductions and no adjustments; three adjustments summing 6.5 + 10 + 10 +
+10 = 36.5% with both notices.
+
+**Numbering collision, second time, same cause.** `03f231b` had added a D-0068 in the middle of
+the file, so numbering from `tail -1` gave me a duplicate again. Renumbered mine to D-0069 and
+D-0070 and put the file back into ascending order. Taking the maximum, not the last line, is the
+fix; I had already been told this once by the identical failure two commits ago.
+
+**Left standing.** On a page with reductions, `total.assumption` explains them in prose and the
+new band explains them again. The sentence is API copy and this task was scoped to the
+frontend, so the duplication stays. The page components are still untested — they fetch, and
+there is no fixture for that; only `FormulaStrip` is covered.

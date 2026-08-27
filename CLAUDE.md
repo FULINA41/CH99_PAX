@@ -171,13 +171,18 @@ hatchet runs list -p chp99 --since 1h -o json
 ```
 
 Unit tests over the parsing pure functions -- rates, hierarchy, citations, countries,
-effectivity. No linter and no build step; if you add one, add its command here.
+effectivity -- and over the frontend components that decide what a reader is shown.
+No linter and no build step; if you add one, add its command here.
 
 ```bash
 cd workflows && uv run pytest        # 134 tests, no database or network needed
-cd api       && uv run pytest        # 18 tests, same
+cd api       && uv run pytest        # 24 tests, same
+docker compose exec -T app npx vitest run   # component tests, jsdom, no API needed
 docker compose exec -T app npx tsc --noEmit
 ```
+
+`vitest` runs in the `app` container because that is where the dependencies are installed --
+`node_modules` is a named volume, not the host directory.
 
 There is no set of correct duty rates to check answers against, so `api/audit.py` checks the
 properties every correct answer has instead, over thousands of real queries. It needs a parsed

@@ -2537,101 +2537,6 @@ is not the printed rate is a claim this schema should not have to qualify.
 
 ---
 
-## D-0068 — The host-side report falls back to the dev DSN, because the host has no DATABASE_URL
-
-**Date:** 2026-08-27 · **Area:** scraper · **Status:** accepted
-
-**Context.** A full verification from an empty database, running the commands as CLAUDE.md
-documents them, ended in:
-
-```
-uv run python -m scrape_run --release 2026HTSRev16
-  File "scrape_run.py", line 41, in _report
-    with psycopg.connect(os.environ["DATABASE_URL"]) ...
-KeyError: 'DATABASE_URL'
-```
-
-The **scrape itself succeeded** — all four tasks finished and the payloads landed. What failed
-was printing the report, after the work was done, on the host. The worker gets `DATABASE_URL`
-from compose; the host is never told to set it, and `parse_run` never needed it because its
-report is built from the workflow's own result. `scrape_run` reads `source_fetch` directly, by
-design (D-0007: the report has to be identical whether the run succeeded or lost a source), so
-it needs a connection the host does not have.
-
-**Options.**
-- Document `export DATABASE_URL=...` before running Part 1. One more step before the first
-  command in the project works.
-- Build the report from task outputs like `parse_run` does. Loses the property that a failed
-  run still reports, which is the reason it reads the table.
-- Fall back to the address the dev stack publishes, as `api/settings.py` already does.
-
-**Decision.** The third, with the same constant and the same reasoning as `api/settings.py`.
-
-**Tradeoff.** A hard-coded DSN in a run script is a smell, and it is the second copy of that
-string outside compose. It is dev-only tooling and the alternative was a documented command
-that crashes after doing its work — the worst of both, since the failure looks like the scrape
-failed when it had not.
-
-**Feeds.** SUBMISSION.md §1
-
-# Pending decisions
-
-Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
-numbered entry above once decided — do not decide them here.
-
-- **P-m · The documented counts cannot be reproduced from a cold start today.** Every number
-  in `SCHEMA.md`, `DECISIONS.md` and `PART3_APP.md` is measured against **2026HTSRev16**.
-  USITC now serves **2026HTSRev17** (checked 2026-08-27), and `data/` is gitignored — so a
-  grader cloning this repository runs Part 1, gets Revision 17, and sees different counts
-  everywhere. Pinning does not rescue it: verified this session that
-  `scrape_run --release 2026HTSRev16` returns `skipped — endpoint cannot serve a past release`
-  for **base and ch99**; only the notes PDF has a stable URL. Decide between re-baselining
-  every documented figure on Revision 17 (and re-reading whatever new prose it contains), or
-  stating the revision as an assumption in SUBMISSION.md §5 and letting the counts be
-  historical. Neither is free: the first is a re-verification of the whole project, the second
-  ships documents whose numbers a reviewer cannot reproduce.
-
-- ~~**P-l · Stacking order between a replacement and an additional duty.**~~ Settled by
-  **D-0058**: the schedule states the rule in U.S. note 1 to each subchapter and in 31 notes
-  that override it, so the order is derived rather than chosen. `rule.cumulation` records it,
-  `combine` sorts by operator, and order-dependent queries went 346 → 0. Two provisions
-  claiming the same base still cannot both apply, and those report a range.
-
-- ~~**P-g · Part 3 is intended to be an agent.**~~ Settled by **D-0053**: it is a document.
-  The two uses of a model are both paraphrase shown beside the text they paraphrase, and
-  nothing generative touches the duty stack.
-- **P-h · Alternatives versus stacking.** Several 9902 provisions on one base code are
-  treated as mutually exclusive alternatives, because a shipment is one substance and their
-  descriptions are disjoint — but **nothing in the data states this**, so it is an
-  assumption that belongs in SUBMISSION.md §5. A 9902 reduction combined with a 9903
-  additional duty is not an assumption: note 20(a) states that goods eligible for
-  subchapter II reductions remain subject to the Section 301 duty.
-- ~~**P-i · Effectivity.**~~ Settled by **D-0043**: `effective_from`, `effective_to`,
-  `status` and `status_note` on `rule`, read from the two prose signals. The grey shading is
-  still lost, and that limitation is recorded there.
-- ~~**P-a · Cross-reference code granularity.**~~ Settled by **D-0015**: stored twice, as
-  printed in `rule_edge` and as resolved in `rule_base_match`.
-- ~~**P-b · Inherited base rates.**~~ Settled by **D-0014**: materialised onto every row,
-  with `rate_inherited_from` naming the ancestor.
-- ~~**P-c · Rate representation.**~~ Settled by **D-0013**: `rate_kind` is an operator and
-  three operand columns hold the number, the amount and the unit.
-- ~~**P-d · Unparsed prose.**~~ Settled by **D-0017**: a `parse_issue` row, never a drop.
-- ~~**P-e · Notes as a table.**~~ Settled by **D-0016**: `note`, `rule_note` and
-  `note_subheading`.
-- ~~**P-f · Provenance grain.**~~ Settled by **D-0005**: per source per run, written to
-  both `manifest.json` and a `source_fetch` table.
-- **P-j · Chapter 98 is outside the fetch range.** 199 base rows resolve their Special
-  treatment through `See 98xx.xx.xx`, and the scraper fetches `0100-9799` plus `9900-9999`,
-  so chapter 98 exists in no payload. Decide whether to add it as a fourth `Source` — the
-  scraper needs one entry in `SOURCES` and nothing else — or to leave the citations
-  unresolved and say so on screen. See D-0027.
-- **P-k · An additive duty whose base is named, not implied.** `9903.91.12` reads "The duty
-  provided in subheadings 8716.39.00, 8716.90.30 or 8716.90.50 + 100%". Every other additive
-  provision modifies "the applicable subheading" — whatever the goods classified under —
-  while this one names the base itself. `rate_kind` has no operator for it and it stays
-  `prose`. One row today; decide whether a `rate_base_hts` column earns its place, or
-  whether `rule_edge` already carries enough to reconstruct it.
-
 ## D-0061 — Draw only the total's own operands in the figure
 **Date:** 2026-08-27 · **Area:** app · **Status:** accepted
 
@@ -2849,3 +2754,152 @@ mark them up, which is a bigger change than this one.
 
 Search-page wording ("trade programme") had already been superseded on `task3` by the tag
 treatment in `cea503d`, so only the duplicated "not in the schedule" marker was removed there.
+
+## D-0068 — The host-side report falls back to the dev DSN, because the host has no DATABASE_URL
+
+**Date:** 2026-08-27 · **Area:** scraper · **Status:** accepted
+
+**Context.** A full verification from an empty database, running the commands as CLAUDE.md
+documents them, ended in:
+
+```
+uv run python -m scrape_run --release 2026HTSRev16
+  File "scrape_run.py", line 41, in _report
+    with psycopg.connect(os.environ["DATABASE_URL"]) ...
+KeyError: 'DATABASE_URL'
+```
+
+The **scrape itself succeeded** — all four tasks finished and the payloads landed. What failed
+was printing the report, after the work was done, on the host. The worker gets `DATABASE_URL`
+from compose; the host is never told to set it, and `parse_run` never needed it because its
+report is built from the workflow's own result. `scrape_run` reads `source_fetch` directly, by
+design (D-0007: the report has to be identical whether the run succeeded or lost a source), so
+it needs a connection the host does not have.
+
+**Options.**
+- Document `export DATABASE_URL=...` before running Part 1. One more step before the first
+  command in the project works.
+- Build the report from task outputs like `parse_run` does. Loses the property that a failed
+  run still reports, which is the reason it reads the table.
+- Fall back to the address the dev stack publishes, as `api/settings.py` already does.
+
+**Decision.** The third, with the same constant and the same reasoning as `api/settings.py`.
+
+**Tradeoff.** A hard-coded DSN in a run script is a smell, and it is the second copy of that
+string outside compose. It is dev-only tooling and the alternative was a documented command
+that crashes after doing its work — the worst of both, since the failure looks like the scrape
+failed when it had not.
+
+**Feeds.** SUBMISSION.md §1
+
+# Pending decisions
+
+Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
+numbered entry above once decided — do not decide them here.
+
+- **P-m · The documented counts cannot be reproduced from a cold start today.** Every number
+  in `SCHEMA.md`, `DECISIONS.md` and `PART3_APP.md` is measured against **2026HTSRev16**.
+  USITC now serves **2026HTSRev17** (checked 2026-08-27), and `data/` is gitignored — so a
+  grader cloning this repository runs Part 1, gets Revision 17, and sees different counts
+  everywhere. Pinning does not rescue it: verified this session that
+  `scrape_run --release 2026HTSRev16` returns `skipped — endpoint cannot serve a past release`
+  for **base and ch99**; only the notes PDF has a stable URL. Decide between re-baselining
+  every documented figure on Revision 17 (and re-reading whatever new prose it contains), or
+  stating the revision as an assumption in SUBMISSION.md §5 and letting the counts be
+  historical. Neither is free: the first is a re-verification of the whole project, the second
+  ships documents whose numbers a reviewer cannot reproduce.
+
+- ~~**P-l · Stacking order between a replacement and an additional duty.**~~ Settled by
+  **D-0058**: the schedule states the rule in U.S. note 1 to each subchapter and in 31 notes
+  that override it, so the order is derived rather than chosen. `rule.cumulation` records it,
+  `combine` sorts by operator, and order-dependent queries went 346 → 0. Two provisions
+  claiming the same base still cannot both apply, and those report a range.
+
+- ~~**P-g · Part 3 is intended to be an agent.**~~ Settled by **D-0053**: it is a document.
+  The two uses of a model are both paraphrase shown beside the text they paraphrase, and
+  nothing generative touches the duty stack.
+- **P-h · Alternatives versus stacking.** Several 9902 provisions on one base code are
+  treated as mutually exclusive alternatives, because a shipment is one substance and their
+  descriptions are disjoint — but **nothing in the data states this**, so it is an
+  assumption that belongs in SUBMISSION.md §5. A 9902 reduction combined with a 9903
+  additional duty is not an assumption: note 20(a) states that goods eligible for
+  subchapter II reductions remain subject to the Section 301 duty.
+- ~~**P-i · Effectivity.**~~ Settled by **D-0043**: `effective_from`, `effective_to`,
+  `status` and `status_note` on `rule`, read from the two prose signals. The grey shading is
+  still lost, and that limitation is recorded there.
+- ~~**P-a · Cross-reference code granularity.**~~ Settled by **D-0015**: stored twice, as
+  printed in `rule_edge` and as resolved in `rule_base_match`.
+- ~~**P-b · Inherited base rates.**~~ Settled by **D-0014**: materialised onto every row,
+  with `rate_inherited_from` naming the ancestor.
+- ~~**P-c · Rate representation.**~~ Settled by **D-0013**: `rate_kind` is an operator and
+  three operand columns hold the number, the amount and the unit.
+- ~~**P-d · Unparsed prose.**~~ Settled by **D-0017**: a `parse_issue` row, never a drop.
+- ~~**P-e · Notes as a table.**~~ Settled by **D-0016**: `note`, `rule_note` and
+  `note_subheading`.
+- ~~**P-f · Provenance grain.**~~ Settled by **D-0005**: per source per run, written to
+  both `manifest.json` and a `source_fetch` table.
+- **P-j · Chapter 98 is outside the fetch range.** 199 base rows resolve their Special
+  treatment through `See 98xx.xx.xx`, and the scraper fetches `0100-9799` plus `9900-9999`,
+  so chapter 98 exists in no payload. Decide whether to add it as a fourth `Source` — the
+  scraper needs one entry in `SOURCES` and nothing else — or to leave the citations
+  unresolved and say so on screen. See D-0027.
+- **P-k · An additive duty whose base is named, not implied.** `9903.91.12` reads "The duty
+  provided in subheadings 8716.39.00, 8716.90.30 or 8716.90.50 + 100%". Every other additive
+  provision modifies "the applicable subheading" — whatever the goods classified under —
+  while this one names the base itself. `rate_kind` has no operator for it and it stays
+  `prose`. One row today; decide whether a `rate_base_hts` column earns its place, or
+  whether `rule_edge` already carries enough to reconstruct it.
+
+## D-0069 — The equation holds only what was calculated; the rest is a finding beside it
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted · supersedes part of D-0061
+
+**Context.** D-0061 took the reductions out of the formula but left the exclusions in, as a
+`± 0 · 20 exclusions` cell. It read as `Free + 25% ± 20 exclusions = 25%` — an arithmetic term
+of value zero, in a row of arithmetic terms, for something that is not arithmetic at all. An
+exclusion is a claim about the goods; an HTS match can only say one might apply. The three
+things in the row also came from three different places and were drawn identically, so a base
+rate the schedule prints and a Chapter 99 provision looked like peers.
+
+**Options.**
+- Keep the cell but restyle it — still inside the equals, still reads as a term.
+- Three labelled parts, and everything uncalculated moved beneath.
+
+**Decision.** The calculation is `Base rate (Chapters 1–97) → Chapter 99 adjustments = Estimated
+exposure`, each part labelled and drawn differently: the base rate on a plain rule, the
+adjustments in a bordered `bg-raised` box that holds a list, the exposure on a heavy `border-ink`
+rule. Exclusions and reductions moved to a "Not included in this calculation" band directly
+under it, each with its count and a link to the section that answers it. With no adjustments
+the `→` and its group are both dropped, so the row is base `=` result with no empty operator.
+Operators are `aria-hidden` and hidden below `sm`; the labels carry the relationship.
+
+**Tradeoff.** `total.assumption` still explains the reductions in prose, so a page with
+reductions says it twice — once in the new band, once in the sentence below. The sentence comes
+from the API and this change was scoped to the frontend. Nothing here changes what is computed;
+`combine()` never saw an exclusion or a reduction, which is the whole reason the cell was wrong.
+
+**Feeds.** SUBMISSION.md §2
+
+## D-0070 — Put a test runner in front of the frontend
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** `app/` had no test runner, so every frontend claim in this project rested on
+rendering a page and reading it. That is how `href="#exclusions"` survived: the anchor never
+existed, because `Collapsed` accepted no `id` and dropped it, and a dead link renders exactly
+like a live one.
+
+**Options.**
+- Keep verifying by rendering — cheap, and demonstrably missed a dead link for two commits.
+- Vitest with jsdom, in the container where `node_modules` already lives.
+
+**Decision.** `vitest` + `@testing-library/react`, `docker compose exec -T app npx vitest run`,
+recorded in CLAUDE.md. Six tests on `FormulaStrip` covering the cases this change is about:
+no exclusion or reduction term inside the calculation, the notice and its `href`, the three
+labels, and the empty cases. `Collapsed` now takes an `id`, so `#exclusions` and `#inactive`
+resolve.
+
+**Tradeoff.** The components under test are rendered by Next on the server; jsdom renders them
+as plain functions, which is true today because none of them is async or touches a
+request-scoped API, and would stop being true the moment one does. The page components
+themselves are still untested — they fetch, and there is no fixture for that.
+
+**Feeds.** SUBMISSION.md §2, §4

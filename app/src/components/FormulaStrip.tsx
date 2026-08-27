@@ -24,95 +24,148 @@ function rate(term: Term): string {
   return parts.join(" + ") || term.text || "—";
 }
 
-function Cell({
-  sign, tone, value, label, lines, href, code = false,
-}: {
-  sign: string; tone: string; value: string; label: string; lines: string[]; href?: string;
-  code?: boolean;
-}) {
-  const head = (
-    <span className={`font-mono text-2xl font-medium tabular ${tone}`}>
-      {sign && <span aria-hidden className="mr-1">{sign}</span>}
-      {value}
-    </span>
-  );
+// The three parts do not come from the same place and are not drawn as though they do: the
+// base rate is one figure the schedule prints, the adjustments are a set of separate
+// provisions, and the exposure is what this site worked out from them.
+function Part({
+  label, hint, tone, children,
+}: { label: string; hint?: string; tone: string; children: React.ReactNode }) {
   return (
-    <div className="min-w-[8.5rem] flex-1 border-t-2 border-rule pt-2 first:border-rule-strong">
-      {href ? <a href={href} className="hover:underline">{head}</a> : head}
-      <div className={`mt-1 text-xs text-muted ${code ? "font-mono" : ""}`}>{label}</div>
-      {lines.map((line) => (
-        <div key={line} className="text-xs leading-snug text-faint">{line}</div>
-      ))}
+    <div className={`min-w-[9rem] flex-1 ${tone}`}>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-faint">{label}</h3>
+      {hint && <div className="text-xs text-faint">{hint}</div>}
+      <div className="mt-2">{children}</div>
+    </div>
+  );
+}
+
+function Operator({ glyph }: { glyph: string }) {
+  // The labels carry the relationship for a screen reader; the glyph only speeds up the eye.
+  return (
+    <div aria-hidden className="hidden self-center pt-5 font-mono text-xl text-faint sm:block">
+      {glyph}
+    </div>
+  );
+}
+
+function Adjustment({ layer }: { layer: Layer }) {
+  const mark = MARKS[layer.term.operator];
+  return (
+    <li>
+      <a href={`#${layer.hts}`} className="group block">
+        <span className={`font-mono text-2xl font-medium tabular ${mark.tone}`}>
+          {mark.sign && <span aria-hidden className="mr-1">{mark.sign}</span>}
+          {rate(layer.term)}
+        </span>
+        <span className="ml-2 font-mono text-xs text-muted group-hover:underline">
+          {layer.hts}
+        </span>
+      </a>
+      <div className="text-xs leading-snug text-faint">
+        {layer.programme?.label ?? mark.note}
+      </div>
+    </li>
+  );
+}
+
+// Everything the figure deliberately left out. Each says what it is, how many, and where the
+// page answers it -- an exclusion is a claim about the goods, and no count of HTS matches
+// decides it.
+function NotCounted({ stack }: { stack: DutyStack }) {
+  const excluded = stack.exclusions.reduce((n, group) => n + group.provisions.length, 0);
+  const reduced = stack.reductions.length;
+  if (excluded === 0 && reduced === 0) return null;
+
+  return (
+    <div className="mt-6 border-l-2 border-rule-strong pl-4">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-faint">
+        Not included in this calculation
+      </h3>
+      <ul className="mt-2 space-y-3">
+        {excluded > 0 && (
+          <li>
+            <a
+              href="#exclusions"
+              className="text-ink underline decoration-rule-strong underline-offset-2
+                         hover:decoration-ink"
+            >
+              {excluded} possible product exclusion{excluded === 1 ? "" : "s"}
+            </a>
+            <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">
+              These exclusions are not included in the calculation. An HTS match only
+              identifies possible exclusions; whether one applies depends on the specific
+              goods and the relevant U.S. note.
+            </p>
+          </li>
+        )}
+        {reduced > 0 && (
+          <li>
+            <a
+              href="#reductions"
+              className="text-ink underline decoration-rule-strong underline-offset-2
+                         hover:decoration-ink"
+            >
+              {reduced} possible duty reduction{reduced === 1 ? "" : "s"}
+            </a>
+            <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">
+              Alternatives to the base rate rather than additions to it, so they are not in
+              the figure either. Which one applies, if any, depends on what the goods are.
+            </p>
+          </li>
+        )}
+      </ul>
     </div>
   );
 }
 
 export function FormulaStrip({ stack }: { stack: DutyStack }) {
   const { base_rate: base, total } = stack;
-  const cells = [
-    <Cell
-      key="base"
-      sign="" tone="text-ink"
-      value={rate(base.term)}
-      label={base.column === "2" ? "Column 2" : "Column 1 General"}
-      lines={[
-        base.inherited_from ? `inherited from ${base.inherited_from}` : "stated on this line",
-        ...(base.column === "2" ? ["no normal trade relations"] : []),
-      ]}
-    />,
-  ];
-
-  // Only what the total is actually made of. The reductions never reach combine(), so a
-  // reduction drawn as a term between the base and the "=" is an operand the figure never
-  // used -- and a code carrying 34 of them drew 34 of those.
-  for (const layer of stack.layers) {
-    const mark = MARKS[layer.term.operator];
-    cells.push(
-      <Cell
-        key={layer.hts}
-        sign={mark.sign} tone={mark.tone}
-        value={rate(layer.term)}
-        label={layer.hts}
-        lines={[layer.programme?.label ?? mark.note]}
-        href={`#${layer.hts}`}
-        code
-      />,
-    );
-  }
-
-  if (stack.reductions.length > 0) {
-    cells.push(
-      <Cell
-        key="reductions" sign="±" tone="text-flat" value="0"
-        label={`${stack.reductions.length} duty reduction${
-          stack.reductions.length === 1 ? "" : "s"}`}
-        lines={["could stand in for the base rate", "if your goods are the ones named"]}
-        href="#reductions"
-      />,
-    );
-  }
-
-  const excluded = stack.exclusions.reduce((n, g) => n + g.provisions.length, 0);
-  if (excluded > 0) {
-    cells.push(
-      <Cell
-        key="exclusions" sign="±" tone="text-flat" value="0"
-        label={`${excluded} exclusions`}
-        lines={["could remove one of the duties above", "if your goods are on the list"]}
-        href="#exclusions"
-      />,
-    );
-  }
+  const adjusted = stack.layers.length > 0;
 
   return (
     <section aria-label="How the duty is worked out" className="mt-8">
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-5">
-        {cells}
-        <div className="min-w-[10rem] flex-1 border-t-2 border-ink pt-2">
-          <div className="font-mono text-2xl font-semibold tabular text-ink">
-            <span aria-hidden className="mr-1 text-faint">=</span>
-            {total.expression}
+      <div
+        role="group" aria-label="Duty calculation"
+        className="flex flex-wrap items-stretch gap-x-4 gap-y-6"
+      >
+        <Part
+          label="Base rate" hint="Chapters 1&ndash;97"
+          tone="border-t-2 border-rule-strong pt-2"
+        >
+          <span className="font-mono text-2xl font-medium tabular text-ink">
+            {rate(base.term)}
+          </span>
+          <div className="mt-1 text-xs text-muted">
+            {base.column === "2" ? "Column 2" : "Column 1 General"}
           </div>
+          <div className="text-xs leading-snug text-faint">
+            {base.inherited_from ? `inherited from ${base.inherited_from}` : "stated on this line"}
+          </div>
+          {base.column === "2" && (
+            <div className="text-xs leading-snug text-faint">no normal trade relations</div>
+          )}
+        </Part>
+
+        {adjusted && <Operator glyph="&rarr;" />}
+
+        {adjusted && (
+          <Part
+            label="Chapter 99 adjustments"
+            hint={`${stack.layers.length} provision${stack.layers.length === 1 ? "" : "s"}`}
+            tone="rounded-sm border border-rule-strong bg-raised px-3 pb-3 pt-2"
+          >
+            <ul className="space-y-3">
+              {stack.layers.map((layer) => <Adjustment key={layer.hts} layer={layer} />)}
+            </ul>
+          </Part>
+        )}
+
+        <Operator glyph="=" />
+
+        <Part label="Estimated exposure" tone="border-t-2 border-ink pt-2">
+          <span className="font-mono text-2xl font-semibold tabular text-ink">
+            {total.expression}
+          </span>
           <div className={`mt-1 text-xs text-muted ${
             total.amount_usd ? "font-mono tabular" : ""}`}>
             {total.amount_usd ? money(total.amount_usd) : "needs a declared value"}
@@ -123,8 +176,10 @@ export function FormulaStrip({ stack }: { stack: DutyStack }) {
               {total.ceiling_amount_usd && ` · ${money(total.ceiling_amount_usd)}`}
             </div>
           )}
-        </div>
+        </Part>
       </div>
+
+      <NotCounted stack={stack} />
 
       <p className="mt-4 max-w-prose text-sm leading-relaxed text-muted">{total.assumption}</p>
       {total.ceiling_note && (

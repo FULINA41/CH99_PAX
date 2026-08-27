@@ -24,10 +24,10 @@ function Section({
 }
 
 function Collapsed({
-  summary, blurb, children,
-}: { summary: string; blurb: string; children: React.ReactNode }) {
+  id, summary, blurb, children,
+}: { id: string; summary: string; blurb: string; children: React.ReactNode }) {
   return (
-    <details className="mt-12 border-t border-rule pt-4">
+    <details id={id} className="mt-12 scroll-mt-6 border-t border-rule pt-4">
       <summary className="font-serif text-xl text-ink">{summary}</summary>
       <p className="ml-4 mt-1 max-w-prose text-sm text-muted">{blurb}</p>
       <div className="ml-4">{children}</div>
@@ -233,6 +233,7 @@ export default async function DutyPage(
 
       {stack.exclusions.length > 0 && (
         <Collapsed
+          id="exclusions"
           summary={`${stack.exclusions.reduce((n, g) => n + g.provisions.length, 0)} exclusions`}
           blurb="Each is a list of products carved out of a duty above. Whether your goods are
                  on one is a question about the goods, and the note is where it is answered."
@@ -268,6 +269,7 @@ export default async function DutyPage(
 
       {stack.inactive.length > 0 && (
         <Collapsed
+          id="inactive"
           summary={`${stack.inactive.length} not in force on ${asked.on_date}`}
           blurb="Expired, not yet started, or stopped by a compiler's note. Kept because they
                  answer a different date, and because a schedule that hides them teaches the
