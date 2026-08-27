@@ -31,12 +31,12 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
           <h1 className="font-mono text-3xl font-medium tracking-tight text-ink">{rule.hts}</h1>
           {rule.label && (
             <span className="rounded-sm bg-raised px-2 py-1 text-xs text-muted">
-              {rule.label}<span className="ml-1.5 text-faint">· editorial</span>
+              {rule.label}<span className="ml-1.5 text-faint">· not in the schedule</span>
             </span>
           )}
           {rule.status !== "in_force" && (
             <span className="rounded-sm bg-unsure-soft px-2 py-1 text-xs text-unsure">
-              {rule.status}
+              {rule.status_reading}
             </span>
           )}
         </div>
@@ -50,7 +50,7 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
             <span className="font-mono text-ink">{rule.rate_text || "— none printed —"}</span>
           </Row>
           <Row label="Read as">
-            <span className="font-mono">{rule.rate_kind}</span>
+            <span className="text-ink">{rule.rate_kind_reading}</span>
             {rule.rate_ad_valorem_pct !== null && (
               <span className="tabular"> · {Number(rule.rate_ad_valorem_pct)}%</span>
             )}
@@ -59,20 +59,16 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
                 {" "}· ${Number(rule.rate_specific_amount)} per {rule.rate_specific_unit}
               </span>
             )}
-            <div className="mt-1 text-xs text-faint">
-              rate_kind is the operator; the columns beside it are its operands, which is what
-              makes the duty computable rather than only displayable.
-            </div>
           </Row>
           {rule.additional_duty_text && (
             <Row label="Additional duty">{rule.additional_duty_text}</Row>
           )}
-          <Row label="Scope">
-            <span className="font-mono">{rule.scope}</span>
+          <Row label="What it covers">
+            <span className="text-ink">{rule.scope_reading}</span>
             {rule.scope === "by_country_all_goods" && (
               <div className="mt-1 text-xs text-unsure">
-                Names a country and limits the goods in prose that could not be turned into
-                codes, so it reaches every import from that origin.
+                Because the goods are described in words rather than by code, this site has to
+                read it as reaching every import from that origin.
               </div>
             )}
           </Row>
@@ -90,9 +86,9 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
             <Row label="Authority">
               {rule.statute} · {rule.agency}
               <div className="mt-1 text-xs text-faint">
-                Editorial. The schedule never names a statute — of 345 U.S. notes exactly one
-                does. Admitted because the provisions in this heading family state the subject
-                matter themselves: {rule.evidence}.{" "}
+                Added by this site, not printed in the schedule, which almost never names the
+                law behind a provision. It is shown because the provisions in this heading
+                family state the subject matter themselves: {rule.evidence}.{" "}
                 <a
                   href={rule.reference_url ?? "#"} target="_blank" rel="noreferrer noopener"
                   className="underline decoration-rule-strong underline-offset-2"
@@ -109,7 +105,7 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
         <h2 className="font-serif text-xl text-ink">What it reaches</h2>
         <p className="mt-1 max-w-prose text-sm text-muted">
           {rule.base_codes === null
-            ? "No base-schedule code, by either path."
+            ? "Its text names no code in chapters 1\u201397, and neither does any note it cites."
             : <>
                 <span className="tabular text-ink">{rule.base_codes.toLocaleString()}</span>{" "}
                 codes in chapters 1&ndash;97 —{" "}
@@ -151,9 +147,9 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
                   <span className="font-mono text-muted">“{note.cited_text}”</span>
                   {note.match_precision === "parent_fallback" && (
                     <span className="ml-2 text-unsure">
-                      — it names subdivision {note.cited_subdivision}, which the notes parse
-                      could not isolate, so what is shown is the whole note and is wider than
-                      this provision
+                      — it names subdivision {note.cited_subdivision}, which could not be
+                      read apart from the rest of the note, so what is shown is the whole note
+                      and is wider than this provision
                     </span>
                   )}
                   {note.match_precision === "chapter_note" && (
@@ -186,7 +182,7 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
                   <tr key={`${row.base_hts}-${row.cited_code}`} className="border-t border-rule">
                     <td className="py-1 text-muted">{row.base_hts}</td>
                     <td className="py-1 text-faint">{row.cited_code}</td>
-                    <td className="py-1 text-faint">{row.path} · {row.match_kind}</td>
+                    <td className="py-1 text-faint">{row.path} · {row.how}</td>
                   </tr>
                 ))}
               </tbody>

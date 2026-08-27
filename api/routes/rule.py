@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from db import one, rows
+from reference.wording import reading
 
 router = APIRouter(tags=["provisions"])
 
@@ -85,6 +86,12 @@ def read_rule(hts: str) -> dict:
         raise HTTPException(404, f"{hts} is not a Chapter 99 provision in this revision")
 
     edges = rows(EDGES, {"hts": hts})
+    # The stored token never reaches the page; a reader is told what the provision does.
+    for field in ("rate_kind", "scope", "status"):
+        found[f"{field}_reading"] = reading(field, found[field])
+    sample = rows(SAMPLE, {"hts": hts})
+    for row in sample:
+        row["how"] = reading("match_kind", row["match_kind"])
     return {
         "rule": found,
         "cited_codes": rows(CITED_CODES, {"hts": hts}),
@@ -93,5 +100,5 @@ def read_rule(hts: str) -> dict:
         "identifiers": rows(IDENTIFIERS, {"hts": hts}),
         "carves_out": [e for e in edges if e["direction"] == "carves out"],
         "carved_out_by": [e for e in edges if e["direction"] == "is carved out by"],
-        "sample": rows(SAMPLE, {"hts": hts}),
+        "sample": sample,
     }

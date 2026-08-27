@@ -42,7 +42,7 @@ export function LayerCard({ layer, dimmed = false }: { layer: Layer; dimmed?: bo
         {layer.programme && (
           <span className="rounded-sm bg-raised px-2 py-0.5 text-xs text-muted">
             {layer.programme.label}
-            <span className="ml-1.5 text-faint">· editorial</span>
+            <span className="ml-1.5 text-faint">· not in the schedule</span>
           </span>
         )}
         {STANDING[when.standing] && (

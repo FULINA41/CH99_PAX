@@ -150,6 +150,7 @@ export type RuleDetail = {
   rule: {
     hts: string; heading: string; subchapter: string; full_description: string;
     scope: string; rate_text: string | null; rate_kind: string;
+    rate_kind_reading: string; scope_reading: string; status_reading: string;
     rate_ad_valorem_pct: string | null; rate_specific_amount: string | null;
     rate_specific_unit: string | null; additional_duty_text: string | null;
     effective_from: string | null; effective_to: string | null;
@@ -168,7 +169,8 @@ export type RuleDetail = {
   identifiers: { kind: string; value: string }[];
   carves_out: { target_hts: string; source_hts: string; description: string | null; rate_text: string | null }[];
   carved_out_by: { target_hts: string; source_hts: string; description: string | null; rate_text: string | null }[];
-  sample: { base_hts: string; cited_code: string; match_kind: string; path: string }[];
+  sample: { base_hts: string; cited_code: string; match_kind: string; path: string;
+            how: string }[];
 };
 
 export type NoteDetail = {

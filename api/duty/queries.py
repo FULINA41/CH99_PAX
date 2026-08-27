@@ -168,6 +168,9 @@ ORDER BY rn.rule_hts, n.label
 #   * out of force, by status and by the date window;
 #   * origin, by rule.origin_scope -- a Section 301 provision does not reach a German shipment
 #     however well its codes match;
+#   * conditions the provision states about the base rate -- a provision its own sentence
+#     rules out does not reach these goods (D-0057), and leaving this filter out named a
+#     programme on 682 of 4,000 audited queries that the duty page then did not show;
 #   * and when the caller named no country, nothing is filtered on origin, because "which
 #     actions mention this code at all" is a fair question to ask without one.
 #
@@ -184,7 +187,12 @@ PROGRAMMES = """(
     ) reach
     JOIN rule r ON r.hts = reach.rule_hts
     JOIN trade_programme p ON p.heading_prefix = left(reach.rule_hts, 7)
-    WHERE r.status = 'in_force'
+    -- Only provisions that do something to the duty. A 'no_change' heading is an exclusion --
+    -- it carves goods back OUT of another duty -- and naming its trade action against a code
+    -- reads as "this action taxes you" when it says the opposite. Five IEEPA exclusions were
+    -- the only contact 682 of 4,000 audited codes had with that action.
+    WHERE r.rate_kind NOT IN ('no_change', 'none')
+      AND r.status = 'in_force'
       AND (r.effective_from IS NULL OR r.effective_from <= current_date)
       AND (r.effective_to   IS NULL OR r.effective_to   >= current_date)
       AND (%(country)s::text IS NULL
@@ -192,6 +200,14 @@ PROGRAMMES = """(
            OR EXISTS (SELECT 1 FROM rule_country c
                       WHERE c.rule_hts = r.hts AND c.relation = 'product_of'
                         AND c.country_code = %(country)s))
+      AND NOT EXISTS (
+          SELECT 1 FROM rule_condition rc JOIN hts_base b ON b.hts = hit.hts
+          WHERE rc.rule_hts = r.hts AND rc.kind = 'col1_rate'
+            AND b.rate_ad_valorem_pct IS NOT NULL
+            AND NOT CASE rc.operator
+                      WHEN 'lt'  THEN b.rate_ad_valorem_pct <  rc.value
+                      ELSE            b.rate_ad_valorem_pct >= rc.value
+                    END)
 ) AS programmes"""
 
 SEARCH = f"""
@@ -232,4 +248,14 @@ WITH hit AS (
 )
 SELECT hit.*, {PROGRAMMES}
 FROM hit ORDER BY rank DESC
+"""
+
+
+# The eligibility conditions a matched provision states about the base rate. Evaluated in
+# Python against the classified good's Column 1 rate, because the judgement has to be shown
+# on screen next to the sentence it came from, not buried in a WHERE clause (D-0057).
+CONDITIONS = """
+SELECT rule_hts, kind, operator, value, verbatim
+FROM rule_condition WHERE rule_hts = ANY(%(rules)s)
+ORDER BY rule_hts, kind, value
 """

@@ -279,7 +279,7 @@ export default async function DutyPage(
         >
           {jsonPath}
         </a>
-        . The page renders that object and computes nothing of its own.
+        .
       </footer>
     </main>
   );

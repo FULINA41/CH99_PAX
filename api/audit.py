@@ -92,6 +92,30 @@ def money_check(stack, value: Decimal) -> str | None:
     return None
 
 
+def badge_agrees(stack, country: str | None, rows) -> list[str]:
+    """The search badge and the duty page must name the same trade actions.
+
+    They are computed by different SQL against the same tables, and the badge is the cheaper
+    of the two -- which is exactly how it drifted: it once ignored origin entirely and named
+    "Section 301 - China" one click away from a duty page showing nothing.
+    """
+    named = rows(_badge_sql(), {"hts": stack.classification.hts, "country": country})
+    badge = set(named[0]["programmes"] or []) if named else set()
+    shown = {layer.programme.label
+             for layer in stack.layers + stack.reductions + stack.origin_scoped
+             + stack.origin_unresolved + stack.competing_replacements
+             if layer.programme}
+    missing = badge - shown
+    return [f"badge names {label!r} that the duty page does not" for label in sorted(missing)]
+
+
+def _badge_sql() -> str:
+    # Wraps the query the API actually runs rather than restating it. Two copies of a filter
+    # that must agree is precisely the defect this check exists to find.
+    from duty import queries
+    return f"WITH hit AS (SELECT %(hts)s::text AS hts) SELECT {queries.PROGRAMMES} FROM hit"
+
+
 def determined(stack) -> str:
     """How settled this answer is, in one word."""
     if any(layer.term.operator == "unknown" for layer in stack.layers):
@@ -143,7 +167,9 @@ def main() -> int:
                 continue
             run += 1
             shape[determined(stack)] += 1
-            for problem in check(stack, country) + [money_check(stack, value)]:
+            problems = check(stack, country) + [money_check(stack, value)]
+            problems += badge_agrees(stack, country, rows)
+            for problem in problems:
                 if problem is None:
                     continue
                 key = problem.split(" is ")[-1] if " is " in problem else problem.split(" ")[0]

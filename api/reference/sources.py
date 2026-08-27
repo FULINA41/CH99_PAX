@@ -15,8 +15,8 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "Do all of these additional duties apply at once, and in what order?",
         "why": (
             "The HTSUS states each duty but never how they combine. Stacking order is set by "
-            "CBP in its filing instructions, which are not part of the tariff schedule and "
-            "not in any of the three sources this project reads."
+            "CBP in its filing instructions, which are published separately and are not part of "
+            "the tariff schedule."
         ),
         "source_name": "CBP Cargo Systems Messaging Service (CSMS)",
         "url": CSMS,
@@ -37,9 +37,9 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "Can I claim a free-trade-agreement rate instead?",
         "why": (
             "Column 1 Special is printed here as the schedule prints it and is never "
-            "interpreted. Deciding needs four things none of these sources has: the SPI code "
-            "table in General Note 3(a)(iv), the rules of origin in a General Note per "
-            "agreement, the importer's own claim, and for some rows chapter 98. D-0027."
+            "interpreted. Deciding needs four things the schedule does not print here: the SPI "
+            "code table in General Note 3(a)(iv), the rules of origin in a General Note per "
+            "agreement, the importer's own claim, and for some rows chapter 98."
         ),
         "source_name": "HTSUS General Notes",
         "url": HTS,
@@ -71,8 +71,8 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "Does my country pay the Column 1 or the Column 2 rate?",
         "why": (
             "The countries without normal trade relations are named in General Note 3(b), "
-            "which is not in any of the three sources. The four-country list this site uses "
-            "is an editorial addition, marked as such."
+            "which the tariff schedule publishes separately. The four-country list used here is "
+            "this site's own addition and is marked wherever it is applied."
         ),
         "source_name": "HTSUS General Note 3(b)",
         "url": HTS,
@@ -82,8 +82,8 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "Is this provision still in force?",
         "why": (
             "Dates are read from the provision's own prose, which states one only when it is "
-            "unusual. The PDF marks an expired row by shading it grey, and text extraction "
-            "loses that entirely. D-0043."
+            "unusual. An expired row is marked in the published schedule by shading it grey, "
+            "which is colour rather than words and does not survive being read as text."
         ),
         "source_name": "the current HTSUS revision, and the Federal Register notice",
         "url": HTS,
@@ -93,7 +93,8 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "question": "What law or order actually created this duty?",
         "why": (
             "A trade action leaves three artifacts: the legal instrument, the tariff line, "
-            "and the filing instruction. This dataset has only the middle one."
+            "and the filing instruction. Only the middle one is the tariff schedule, so only the "
+            "middle one is here."
         ),
         "source_name": "Federal Register",
         "url": FEDERAL_REGISTER,
@@ -104,8 +105,8 @@ UNKNOWNS: dict[str, dict[str, str]] = {
         "why": (
             "Each of these names your country of origin but limits the goods in prose rather "
             "than by code — \"Aluminum articles that are the product of Russia\", for "
-            "instance. Nothing in the data ties that wording to a subheading, so they are "
-            "listed but left out of the total. Read the text against your shipment."
+            "instance. Nothing ties that wording to a particular subheading, so they are listed "
+            "but left out of the total. Read the text against your shipment."
         ),
         "source_name": "the provision text shown above",
         "url": HTS,
@@ -117,9 +118,8 @@ UNKNOWNS: dict[str, dict[str, str]] = {
             "Each of these limits itself to a group of countries the schedule does not list "
             "here — \"any country identified in general note 3(b)\", \"any country not exempt "
             "under U.S. note 41(c)\", \"any country determined by CBP to have been "
-            "transshipped\". The list lives in a document none of the three sources contains, "
-            "so whether yours is in it cannot be answered here. Shown and left out of the "
-            "figure. D-0056."
+            "transshipped\". That list is published elsewhere, so whether yours is on it cannot "
+            "be answered here. Shown, and left out of the figure."
         ),
         "source_name": "the General Note or U.S. note the provision names",
         "url": HTS,
@@ -132,7 +132,7 @@ UNKNOWNS: dict[str, dict[str, str]] = {
             "in chapters 1 to 98 — so two of them cannot both apply, and the schedule does "
             "not choose. These are usually a tariff-rate quota's in-quota and over-quota "
             "rates, told apart by how much of the quota has already been filled this year, "
-            "which is not in any of these sources. The lower one is in the figure and the "
+            "which the schedule does not publish. The lower one is in the figure and the "
             "rest are in the range."
         ),
         "source_name": "the quota status published by CBP",
@@ -142,12 +142,12 @@ UNKNOWNS: dict[str, dict[str, str]] = {
     "scope_widened": {
         "question": "Why does this provision look like it covers so much?",
         "why": (
-            "It cites a subdivision of a U.S. note that the notes parser could not isolate "
-            "from the PDF, so the coverage shown is the whole note — wider than the "
-            "provision really is. D-0038."
+            "It cites one subdivision of a U.S. note, but that subdivision could not be read "
+            "apart from the rest of the note, so the coverage shown is the whole note — "
+            "wider than the provision really is."
         ),
         "source_name": "the note text and page number shown on the provision",
         "url": HTS,
-        "what_to_search": "the subdivision named in the provision, in the notes PDF",
+        "what_to_search": "the subdivision named in the provision, in the notes document",
     },
 }

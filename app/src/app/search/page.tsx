@@ -110,7 +110,7 @@ export default async function SearchPage(
               {country ? " and reaches goods from this origin" : ""} — not a duty you will
               pay. Whether one covers your goods is what the code&rsquo;s own page works out.
               The names are this site&rsquo;s attribution; the schedule never states one.
-              <span className="text-faint"> · editorial</span>
+              <span className="text-faint"> · not in the schedule</span>
             </p>
           )}
 

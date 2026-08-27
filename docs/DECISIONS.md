@@ -2633,3 +2633,32 @@ blunt regex and would reject a legitimate example code if one were ever wanted �
 the example belongs in the page, not in copy shared by every query.
 
 **Feeds.** SUBMISSION.md §5
+
+## D-0063 — Give every stored enum words before it may reach a page
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** `/rule/{hts}` printed its columns as stored. A reader saw `Read as additive`,
+`Scope by_country_all_goods`, a status chip reading `suspended`, and a coverage table whose
+`how` column read `named directly · prefix`. On `/rule/9903.74.03` the two worst landed
+together — `Read as prose` above `Scope unknown` — which reads as a broken page rather than as
+a provision whose rate is written as a sentence. Five decision-log IDs (`D-0019`, `D-0027`,
+`D-0038`, `D-0043`, `D-0056`) were also printed verbatim in the unknowns panel.
+
+**Options.**
+- A label map in the frontend — natural home for presentation, but `app/` has no test runner,
+  so nothing would stop the next enum value from leaking.
+- Readings in the API beside the token, tested against the schema's own CHECK constraints.
+
+**Decision.** `api/reference/wording.py` holds one reading per value of `rate_kind`, `scope`,
+`status`, `match_kind` and `match_precision`; `reading()` raises `KeyError` rather than falling
+back to the token. `/rule/{hts}` sends `*_reading` fields alongside the raw values, which are
+kept in the payload for API callers. Decision IDs and the internal vocabulary around them
+("the notes parser", "the three sources this project reads", "this dataset") are out of the
+reader-facing copy; the reasoning stays here, where it is addressed to the grader.
+
+**Tradeoff.** Two representations of the same column now travel in the payload and can drift.
+The test that walks `db/schema.sql` for CHECK constraints and demands a reading for every
+permitted value is what keeps them together — it fails on a schema change, which is when the
+gap would otherwise open. It does not catch a reading that is merely wrong.
+
+**Feeds.** SUBMISSION.md §2, §5
