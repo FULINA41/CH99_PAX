@@ -4,7 +4,7 @@ Full reasoning lives in `docs/DECISIONS.md` (one entry per decision, cited below
 and `docs/JOURNAL.md` (what was run and what it printed). This file is the map to those, not
 a restatement of them.
 
-**Demo video:** https://www.loom.com/share/2799e879970441aeba013863e3005292
+**Demo video:** https://www.loom.com/share/9dcc7ffe25ef4c0f90bf89272758b46f
 
 ## 1. How to run it
 
