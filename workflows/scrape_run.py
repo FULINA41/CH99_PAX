@@ -35,10 +35,20 @@ def main() -> None:
         raise SystemExit(1)
 
 
+# This module runs on the host, where nothing sets DATABASE_URL -- the worker gets it from
+# compose and parse_run never needs it, because its report comes from the workflow's own
+# result. Requiring it here meant the documented way to run Part 1 ended in a KeyError after
+# the scrape had already succeeded. Same fallback as api/settings.py, and the same reason: it
+# is the address the dev stack publishes.
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL", "postgres://postgres:postgres@localhost:5432/chp99"
+)
+
+
 def _report(run_id: str) -> None:
     # Read from source_fetch rather than the task outputs, so the report is identical
     # whether the run succeeded or lost a source.
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cursor:
+    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cursor:
         cursor.execute(REPORT, (run_id,))
         rows = cursor.fetchall()
 

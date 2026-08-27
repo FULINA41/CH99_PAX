@@ -2537,10 +2537,59 @@ is not the printed rate is a claim this schema should not have to qualify.
 
 ---
 
+## D-0068 — The host-side report falls back to the dev DSN, because the host has no DATABASE_URL
+
+**Date:** 2026-08-27 · **Area:** scraper · **Status:** accepted
+
+**Context.** A full verification from an empty database, running the commands as CLAUDE.md
+documents them, ended in:
+
+```
+uv run python -m scrape_run --release 2026HTSRev16
+  File "scrape_run.py", line 41, in _report
+    with psycopg.connect(os.environ["DATABASE_URL"]) ...
+KeyError: 'DATABASE_URL'
+```
+
+The **scrape itself succeeded** — all four tasks finished and the payloads landed. What failed
+was printing the report, after the work was done, on the host. The worker gets `DATABASE_URL`
+from compose; the host is never told to set it, and `parse_run` never needed it because its
+report is built from the workflow's own result. `scrape_run` reads `source_fetch` directly, by
+design (D-0007: the report has to be identical whether the run succeeded or lost a source), so
+it needs a connection the host does not have.
+
+**Options.**
+- Document `export DATABASE_URL=...` before running Part 1. One more step before the first
+  command in the project works.
+- Build the report from task outputs like `parse_run` does. Loses the property that a failed
+  run still reports, which is the reason it reads the table.
+- Fall back to the address the dev stack publishes, as `api/settings.py` already does.
+
+**Decision.** The third, with the same constant and the same reasoning as `api/settings.py`.
+
+**Tradeoff.** A hard-coded DSN in a run script is a smell, and it is the second copy of that
+string outside compose. It is dev-only tooling and the alternative was a documented command
+that crashes after doing its work — the worst of both, since the failure looks like the scrape
+failed when it had not.
+
+**Feeds.** SUBMISSION.md §1
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
 numbered entry above once decided — do not decide them here.
+
+- **P-m · The documented counts cannot be reproduced from a cold start today.** Every number
+  in `SCHEMA.md`, `DECISIONS.md` and `PART3_APP.md` is measured against **2026HTSRev16**.
+  USITC now serves **2026HTSRev17** (checked 2026-08-27), and `data/` is gitignored — so a
+  grader cloning this repository runs Part 1, gets Revision 17, and sees different counts
+  everywhere. Pinning does not rescue it: verified this session that
+  `scrape_run --release 2026HTSRev16` returns `skipped — endpoint cannot serve a past release`
+  for **base and ch99**; only the notes PDF has a stable URL. Decide between re-baselining
+  every documented figure on Revision 17 (and re-reading whatever new prose it contains), or
+  stating the revision as an assumption in SUBMISSION.md §5 and letting the counts be
+  historical. Neither is free: the first is a re-verification of the whole project, the second
+  ships documents whose numbers a reviewer cannot reproduce.
 
 - ~~**P-l · Stacking order between a replacement and an additional duty.**~~ Settled by
   **D-0058**: the schedule states the rule in U.S. note 1 to each subchapter and in 31 notes

@@ -2104,3 +2104,68 @@ backgrounds was never measured. The two SQL fixes (`DISTINCT ON`, the ellipsis) 
 test because `api/tests` has no database fixture; they were checked against the live database
 only. Nothing in `app/` has a test runner at all, so every frontend change here — the formula
 strip, the monospace pass, the titles, the 404 — rests on rendering the page and reading it.
+
+## 2026-08-27 — A verification from empty, and two things it found
+
+Ran the whole thing the way a grader would: `./cleanup.sh` to an empty database, stack up,
+`./setup.sh`, Part 1, Part 2, tests, audit, pages.
+
+**Every documented count reproduced exactly.**
+
+```
+hts_base 26,246 · rule 3,098 · note 345 · rule_note 977 · note_subheading 48,053
+rule_base_match 16,958 · note_base_match 136,325 · rule_condition 31 · rule_country 503
+rule_coverage 2,825 · parse_issue 522 (resolve) · cumulation 798/619/1,681
+workflows 134 passed · api 24 passed · tsc clean · audit 8,000 queries, 0 violations
+pages 63-413 ms warm, both 404s correct
+```
+
+**One defect, and it was in the first command.**
+
+```
+uv run python -m scrape_run --release 2026HTSRev16
+KeyError: 'DATABASE_URL'
+```
+
+The scrape had **already succeeded** — four tasks finished, payloads on disk — and the crash
+was in printing the report. The host never sets `DATABASE_URL`; the worker gets it from
+compose, and `parse_run` never needed it because its report comes from the workflow result.
+`scrape_run` reads `source_fetch` directly, on purpose (D-0007), so it needs a connection the
+host does not have. Fixed with the same fallback `api/settings.py` already uses (D-0068).
+
+Worth naming why this survived: **every previous run of Part 1 in this project was made before
+`api/settings.py` existed, or from inside the container.** Nothing had run the documented
+host-side command since. A command that is documented and never executed is untested.
+
+**The thing that matters more, and is not fixed.**
+
+```
+curl https://hts.usitc.gov/reststop/currentRelease   ->  2026HTSRev17
+every count in every document                        ->  2026HTSRev16
+```
+
+And pinning does not rescue it — measured this session:
+
+```
+scrape_run --release 2026HTSRev16
+  base       skipped     endpoint cannot serve a past release
+  ch99       skipped     endpoint cannot serve a past release
+  notes_pdf  unchanged   13,969,270 B
+```
+
+Only the notes PDF has a stable URL. The two JSON exports are served for the current release
+only. So **a grader cloning this repository cannot reproduce the numbers in it**: `data/` is
+gitignored, Part 1 fetches Revision 17, and every figure moves. Recorded as **P-m** rather than
+patched, because both ways out cost something real — re-baselining is a re-verification of the
+whole project, and stating it as an assumption ships documents whose numbers cannot be checked.
+
+One smaller thing the same run showed working correctly: with `base` and `ch99` skipped, the
+manifest still came out `"complete": true`, carrying the sha256 and byte count of the files
+already on disk. A partial fetch did not degrade a good payload directory, which is what
+`load_payloads` refusing an incomplete manifest depends on.
+
+**Agent notes.** I nearly ran the unpinned scrape first, which would have landed Revision 17 as
+the resident release and moved every number in the repository before I had asked anyone. I
+checked `currentRelease` before touching anything only because the counts are load-bearing for
+the documents — not because I had planned to. The habit worth keeping is the one I got right by
+accident: **look at what a destructive command will actually fetch before running it.**
