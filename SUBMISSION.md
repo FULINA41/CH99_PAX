@@ -101,7 +101,7 @@ once against a real measurement rather than a first guess — the note-expansion
 
 ## 3. Part 3: what you built, and why that
 
-**Not a duty calculator — a teaching instrument over real provisions.** A calculator has to
+**Not a duty calculator — a teaching instrument over real provisions - Duty WIKI.** A calculator has to
 be right about a number, and the number can't be got right from these three sources: stacking
 order lives in CBP filing instructions, FTA eligibility lives in the General Notes, exclusion
 membership is a question about the goods. What the site optimizes for instead: *can a reader
@@ -182,8 +182,8 @@ gitignored, so a later clone fetches whatever is current then and counts will di
 
 ## 6. Where you used AI tools
 
-Built with Claude Code (agentic, in this repo) throughout — scraper, parser, schema, API,
-frontend, and this document. Two things worth stating plainly rather than leaving implicit:
+Built with Claude Code, there are three parts for this project and for each part, after I have a basic understanding of it I chat and clarify with the claude code and let it generate a solid plan. Then implement it with claude code, I carefully reviewed the code and used edge cases to make sure the system is solid.
+Two things worth stating plainly rather than leaving implicit:
 
 **An LLM layer was built into Part 3, then removed entirely.** A build-time step generated
 one-sentence plain-language summaries of each provision (Haiku, committed as a versioned
