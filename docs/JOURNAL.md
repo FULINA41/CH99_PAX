@@ -1997,3 +1997,66 @@ quoted the old `ASSUMPTION` verbatim in the review and the string had changed un
 edit been to a line I had not quoted, I would have written the fix against a file that no longer
 existed. Re-reading HEAD before editing is cheap; assuming a session-start snapshot still holds
 is not.
+
+## 2026-08-27 — "1 trade programme reaches this code" — asked what it meant, and it meant less
+
+A search result carried that badge. The question was what it means; the answer was that it
+promised more than it computed. It counted trade-action families with a Chapter 99 provision
+touching the code, and applied **none** of the three filters the duty page applies:
+
+```
+origin        /search took no country parameter at all — the selector only built the link.
+              A German shipment was told "1 trade programme reaches this code", and the
+              programme was Section 301 — China.
+effectivity   terminated provisions counted.
+conditions    a provision its own sentence rules out (D-0057) counted.
+```
+
+Plus a fourth: pasting a code hit a branch with `0 AS programmes` hard-coded, so the same code
+answered two ways depending on how it was found.
+
+The origin one is **D-0056 in a second place** — something scoped to an origin, presented as
+though it applied to everyone. Fixed there in the duty query a day earlier and left standing
+here, because nothing compared the two screens.
+
+Fixed by making one subquery serve all three search paths, returning labels rather than a count
+(*"Section 301 — China"* says something; *"1 trade programme"* does not), filtered the same four
+ways — and marked `editorial`, which D-0045 requires the moment a badge names a specific
+attribution rather than a generic category.
+
+**The cross-check earned itself twice in one sitting.** I added an audit invariant comparing the
+badge against the duty page, and it immediately reported 682 violations over 4,000 queries. My
+first diagnosis — the missing condition filter — was a guess; I added the filter and the number
+did not move. Only then did I go and look at the actual failing case:
+
+```
+8412.90.90.35 / CN  ->  five 9903.02 provisions pass the badge filter, all rate_kind='no_change'
+```
+
+Exclusions. The duty page *does* show them, in a bucket whose objects carry no programme label,
+so my invariant was comparing against the wrong set — and the product answer was that an
+exclusion should not put its trade action's name on a code at all, since it means the opposite.
+Excluding `no_change` took it to 407, all of them the countryless case, which is a deliberate
+difference between the two screens rather than a defect.
+
+```
+15,000 queries, origin given:  0 badge disagreements
+```
+
+**A worse thing the audit caught.** Rewriting the tail of `queries.py` to add the shared
+subquery, I deleted `CONDITIONS` — the query the whole duty engine needs. **All 24 API unit
+tests passed.** `/search` worked. The duty endpoint was returning a 500 to anything that asked,
+and the only thing that noticed was the audit's first run. Unit tests over pure functions do
+not touch the database; the audit is the only check here that runs the real thing end to end.
+
+**Agent notes.** Two of my own patterns repeated, both already named in this journal.
+
+First, I wrote three tests asserting **SQL substrings** — `assert "r.origin_scope <> 'named'" in
+queries.PROGRAMMES` — the exact anti-pattern CLAUDE.md forbids and that I deleted a batch of
+earlier in this same project. Deleted again, and replaced with the audit cross-check, which is
+what the behaviour actually deserved.
+
+Second, on hitting 682 violations I reached for a plausible cause and implemented the fix
+before checking whether it was the cause. That is the "checked the nearest artifact when the
+governing evidence was one query away" pattern from yesterday, applied to my own code this
+time. The query that settled it took twenty seconds.

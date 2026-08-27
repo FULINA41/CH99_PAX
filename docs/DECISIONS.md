@@ -2634,6 +2634,56 @@ the example belongs in the page, not in copy shared by every query.
 
 **Feeds.** SUBMISSION.md §5
 
+## D-0064 — The search badge answers with the duty page's own filters, or it does not answer
+
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** A search result carried `1 trade programme reaches this code`. Asked what it
+meant, and the honest answer was: less than it says. The count came from one subquery that
+joined `trade_programme` to whatever Chapter 99 provisions touched the code, and applied
+**none** of the three filters the duty page applies:
+
+- **Origin.** `/search` took no `country` parameter at all — the selector on the page only
+  built the outgoing link. So a German shipment was told a trade programme reached its code,
+  and that programme was *Section 301 — China*. This is D-0056 in a second place: something
+  scoped to an origin, shown as though it applied to every origin.
+- **Effectivity.** Terminated provisions counted.
+- **Conditions.** A provision its own sentence rules out (D-0057) counted.
+
+And a fourth: pasting a code took a different branch with `0 AS programmes` hard-coded, so the
+same code answered two ways depending on how it was found.
+
+**Options.**
+- Reword the badge and leave the computation. The words would still be wrong.
+- Filter the badge, and keep the count.
+- Filter the badge, and name the action instead of counting.
+
+**Decision.** The third. `queries.PROGRAMMES` is one subquery shared by all three search paths,
+returning labels rather than a count — *"Section 301 — China"* tells a reader something,
+*"1 trade programme"* does not. It filters on status, the date window, `origin_scope`, and the
+stated conditions, and it excludes `no_change` provisions: an exclusion carves goods **out** of
+a duty, and naming its trade action against a code reads as the opposite of what it means.
+
+Because the label is now a specific attribution, the results page carries the `editorial` mark
+D-0045 requires of every surface that shows one, and a sentence saying a tag is not a duty.
+
+**With no country the badge does not filter on origin**, and the duty page does. That is a
+deliberate difference: without an origin, *"which actions mention this code at all"* is a fair
+question, and the page's copy drops the "and reaches goods from this origin" clause when it
+cannot say it.
+
+**Verified as a cross-check rather than asserted.** `api/audit.py` now compares, per query,
+the actions the badge names against the ones the duty page shows. It found the drift twice
+while this was being built — 682 disagreements from the missing condition filter, then 407 from
+the exclusions — and reports none over 15,000 queries where an origin was given.
+
+**Tradeoff.** The badge is a fourth place the same filtering rules are written; the audit check
+is what keeps it from drifting a fifth time, and the audit builds its query by wrapping
+`queries.PROGRAMMES` rather than restating it. The countryless case remains a real difference
+between two screens, defended only by the wording on each.
+
+**Feeds.** SUBMISSION.md §3, §5
+
 ## D-0063 — Give every stored enum words before it may reach a page
 **Date:** 2026-08-27 · **Area:** app · **Status:** accepted
 
