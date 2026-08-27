@@ -2634,6 +2634,35 @@ the example belongs in the page, not in copy shared by every query.
 
 **Feeds.** SUBMISSION.md §5
 
+## D-0063 — Give every stored enum words before it may reach a page
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** `/rule/{hts}` printed its columns as stored. A reader saw `Read as additive`,
+`Scope by_country_all_goods`, a status chip reading `suspended`, and a coverage table whose
+`how` column read `named directly · prefix`. On `/rule/9903.74.03` the two worst landed
+together — `Read as prose` above `Scope unknown` — which reads as a broken page rather than as
+a provision whose rate is written as a sentence. Five decision-log IDs (`D-0019`, `D-0027`,
+`D-0038`, `D-0043`, `D-0056`) were also printed verbatim in the unknowns panel.
+
+**Options.**
+- A label map in the frontend — natural home for presentation, but `app/` has no test runner,
+  so nothing would stop the next enum value from leaking.
+- Readings in the API beside the token, tested against the schema's own CHECK constraints.
+
+**Decision.** `api/reference/wording.py` holds one reading per value of `rate_kind`, `scope`,
+`status`, `match_kind` and `match_precision`; `reading()` raises `KeyError` rather than falling
+back to the token. `/rule/{hts}` sends `*_reading` fields alongside the raw values, which are
+kept in the payload for API callers. Decision IDs and the internal vocabulary around them
+("the notes parser", "the three sources this project reads", "this dataset") are out of the
+reader-facing copy; the reasoning stays here, where it is addressed to the grader.
+
+**Tradeoff.** Two representations of the same column now travel in the payload and can drift.
+The test that walks `db/schema.sql` for CHECK constraints and demands a reading for every
+permitted value is what keeps them together — it fails on a schema change, which is when the
+gap would otherwise open. It does not catch a reading that is merely wrong.
+
+**Feeds.** SUBMISSION.md §2, §5
+
 ## D-0064 — The search badge answers with the duty page's own filters, or it does not answer
 
 **Date:** 2026-08-27 · **Area:** app · **Status:** accepted
@@ -2683,69 +2712,6 @@ is what keeps it from drifting a fifth time, and the audit builds its query by w
 between two screens, defended only by the wording on each.
 
 **Feeds.** SUBMISSION.md §3, §5
-
-## D-0063 — Give every stored enum words before it may reach a page
-**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
-
-**Context.** `/rule/{hts}` printed its columns as stored. A reader saw `Read as additive`,
-`Scope by_country_all_goods`, a status chip reading `suspended`, and a coverage table whose
-`how` column read `named directly · prefix`. On `/rule/9903.74.03` the two worst landed
-together — `Read as prose` above `Scope unknown` — which reads as a broken page rather than as
-a provision whose rate is written as a sentence. Five decision-log IDs (`D-0019`, `D-0027`,
-`D-0038`, `D-0043`, `D-0056`) were also printed verbatim in the unknowns panel.
-
-**Options.**
-- A label map in the frontend — natural home for presentation, but `app/` has no test runner,
-  so nothing would stop the next enum value from leaking.
-- Readings in the API beside the token, tested against the schema's own CHECK constraints.
-
-**Decision.** `api/reference/wording.py` holds one reading per value of `rate_kind`, `scope`,
-`status`, `match_kind` and `match_precision`; `reading()` raises `KeyError` rather than falling
-back to the token. `/rule/{hts}` sends `*_reading` fields alongside the raw values, which are
-kept in the payload for API callers. Decision IDs and the internal vocabulary around them
-("the notes parser", "the three sources this project reads", "this dataset") are out of the
-reader-facing copy; the reasoning stays here, where it is addressed to the grader.
-
-**Tradeoff.** Two representations of the same column now travel in the payload and can drift.
-The test that walks `db/schema.sql` for CHECK constraints and demands a reading for every
-permitted value is what keeps them together — it fails on a schema change, which is when the
-gap would otherwise open. It does not catch a reading that is merely wrong.
-
-**Feeds.** SUBMISSION.md §2, §5
-
-## D-0064 — Monospace means identifier, and a bare number says which kind it is
-**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
-
-**Context.** 39 spans carried `font-mono`; about 15 held something that was not an identifier —
-the `← Chapter 99` back link, a provision's `rate_text` ("The duty provided in the applicable
-subheading + 25%"), a quoted citation, the words "whole note" in the note nav, "needs a
-declared value" under the total. With monospace meaning both "identifier" and "value out of the
-database", it could not be used to recognise a code. Worse, the two families of number are
-drawn identically: `/rule/9903.88.04` and `/duty/7208.51.00.30` both open on a bare mono number,
-though one modifies goods and the other classifies them — the distinction the whole site exists
-to teach.
-
-**Options.**
-- A glyph or colour on Chapter 99 numbers — a legend to learn, and colour alone is not a cue.
-- Prefix every 9903 link with the word "heading" — accurate but heavy in a list of thirteen.
-- Keep monospace for identifiers only, and label the page subject in words.
-
-**Decision.** `font-mono` follows the content, not the slot: `Cell` takes a `code` flag so the
-label under a formula term is monospaced when it is a provision number and not when it is
-"34 duty reductions"; the total's second line is monospaced only when it is money. Both detail
-pages open with a kicker — `Chapter 99 provision`, `Classified good · chapters 1–97`. The rule
-page's `Cites:` became `Names in chapters 1–97:`, which says which schedule the numbers belong
-to instead of leaving it to be inferred.
-
-**Tradeoff.** The kicker costs a line of vertical space above the fold on every detail page.
-Nothing yet distinguishes the two families *inside* running prose, where a provision's own
-description names a dozen other provisions as plain text — labelling those needs the parser to
-mark them up, which is a bigger change than this one.
-
-**Feeds.** SUBMISSION.md §2
-
-Search-page wording ("trade programme") had already been superseded on `task3` by the tag
-treatment in `cea503d`, so only the duplicated "not in the schedule" marker was removed there.
 
 ## D-0065 — One row per fact, and a truncation that looks deliberate
 **Date:** 2026-08-27 · **Area:** api · **Status:** accepted
@@ -2800,3 +2766,37 @@ flatter than it was drawn. Contrast was measured with a script, not with a brows
 only against the two surface colours — text over the `*-soft` chip backgrounds is unmeasured.
 
 **Feeds.** SUBMISSION.md §2
+
+## D-0067 — Monospace means identifier, and a bare number says which kind it is
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** 39 spans carried `font-mono`; about 15 held something that was not an identifier —
+the `← Chapter 99` back link, a provision's `rate_text` ("The duty provided in the applicable
+subheading + 25%"), a quoted citation, the words "whole note" in the note nav, "needs a
+declared value" under the total. With monospace meaning both "identifier" and "value out of the
+database", it could not be used to recognise a code. Worse, the two families of number are
+drawn identically: `/rule/9903.88.04` and `/duty/7208.51.00.30` both open on a bare mono number,
+though one modifies goods and the other classifies them — the distinction the whole site exists
+to teach.
+
+**Options.**
+- A glyph or colour on Chapter 99 numbers — a legend to learn, and colour alone is not a cue.
+- Prefix every 9903 link with the word "heading" — accurate but heavy in a list of thirteen.
+- Keep monospace for identifiers only, and label the page subject in words.
+
+**Decision.** `font-mono` follows the content, not the slot: `Cell` takes a `code` flag so the
+label under a formula term is monospaced when it is a provision number and not when it is
+"34 duty reductions"; the total's second line is monospaced only when it is money. Both detail
+pages open with a kicker — `Chapter 99 provision`, `Classified good · chapters 1–97`. The rule
+page's `Cites:` became `Names in chapters 1–97:`, which says which schedule the numbers belong
+to instead of leaving it to be inferred.
+
+**Tradeoff.** The kicker costs a line of vertical space above the fold on every detail page.
+Nothing yet distinguishes the two families *inside* running prose, where a provision's own
+description names a dozen other provisions as plain text — labelling those needs the parser to
+mark them up, which is a bigger change than this one.
+
+**Feeds.** SUBMISSION.md §2
+
+Search-page wording ("trade programme") had already been superseded on `task3` by the tag
+treatment in `cea503d`, so only the duplicated "not in the schedule" marker was removed there.

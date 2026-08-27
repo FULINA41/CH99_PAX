@@ -2064,7 +2064,13 @@ time. The query that settled it took twenty seconds.
 ## 2026-08-27 (later) — the rest of the review, and a second stale-data catch
 
 **Steps two to four of the review, on branch `ui-polish`.** Enum leakage, monospace and
-vocabulary, then the remaining defects and contrast. Recorded as D-0063 to D-0066.
+vocabulary, then the remaining defects and contrast. Recorded as D-0063, D-0065, D-0066 and
+D-0067 — not a contiguous run, because D-0064 was taken by `a75d127`, which landed on this
+branch between my third and fourth commits while I was working. I had numbered a decision
+against a copy of the file that no longer existed and produced a duplicate D-0064; mine was
+renumbered to D-0067 and the tail of the file put back into ascending order. Third time this
+session that state moved underneath me, and the first that I caused rather than merely
+tripped over.
 
 **The note IDs had changed under me too.** `/note/444` — the page my review quoted for the
 duplicate-citation defect — returned `no note with id 444`. The parser changes in `cea503d`
