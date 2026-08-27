@@ -19,6 +19,8 @@ const MATCHED: Record<Results["matched_by"], string> = {
   spelling: "no wording matched, so these are the closest spellings",
 };
 
+export const metadata = { title: "Find a code" };
+
 export default async function SearchPage(
   { searchParams }: { searchParams: Promise<{ q?: string; country?: string }> },
 ) {
@@ -47,7 +49,7 @@ export default async function SearchPage(
           <span className="block text-xs text-faint">Words, or a code</span>
           <input
             type="search" name="q" required defaultValue={q} placeholder="hot-rolled steel plate"
-            className="mt-1 w-80 border-b border-rule-strong bg-transparent py-1 text-ink
+            className="mt-1 w-80 border-b border-field bg-transparent py-1 text-ink
                        outline-none placeholder:text-faint focus:border-ink"
           />
         </label>
@@ -55,7 +57,7 @@ export default async function SearchPage(
           <span className="block text-xs text-faint">Country of origin</span>
           <select
             name="country" defaultValue={country ?? ""}
-            className="mt-1 w-52 border-b border-rule-strong bg-transparent py-1 text-ink
+            className="mt-1 w-52 border-b border-field bg-transparent py-1 text-ink
                        outline-none focus:border-ink"
           >
             <option value="">— choose later —</option>
@@ -75,7 +77,7 @@ export default async function SearchPage(
         </label>
         <button
           type="submit"
-          className="border border-rule-strong px-4 py-1.5 text-sm text-ink
+          className="border border-field px-4 py-1.5 text-sm text-ink
                      hover:border-ink hover:bg-raised"
         >
           Search

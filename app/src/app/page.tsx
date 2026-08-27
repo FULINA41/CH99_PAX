@@ -5,6 +5,23 @@ type Meta = {
   counts: Record<string, number>;
 };
 
+const CHANGES = [
+  "add an extra duty to the base rate;",
+  "replace the base rate;",
+  "reduce or remove a duty; or",
+  "leave the base rate unchanged while imposing other conditions.",
+];
+
+const WORKFLOW = [
+  "Describe the product",
+  "identify its HTS number",
+  "find the base rate",
+  "check the country, date and other conditions",
+  "identify applicable Chapter 99 provisions",
+  "apply each provision as instructed",
+  "calculate the final duty",
+];
+
 // Three worked examples, each demonstrating a different thing Chapter 99 does. They are the
 // way in: a novice opening a tariff site does not know a code to type, and "search for your
 // product" is a worse first instruction than "look at what happens to steel".
@@ -49,20 +66,54 @@ export default async function Home() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-16">
       <h1 className="font-serif text-4xl tracking-tight text-ink">Chapter 99</h1>
-      <p className="mt-5 max-w-prose text-lg leading-relaxed text-ink">
-        Chapters 1 to 97 of the US tariff schedule classify goods. Chapter 99 does not — it
-        changes what already-classified goods pay.
+
+      <h2 className="mt-6 max-w-prose font-serif text-2xl leading-snug text-ink">
+        How is the duty on an imported product determined?
+      </h2>
+      <p className="mt-5 max-w-prose leading-relaxed text-muted">
+        A product name alone is not enough to determine its duty rate. First, the product must
+        be classified under Chapters 1&ndash;97 of the U.S. tariff schedule and assigned an HTS
+        number. That classification provides the ordinary, or base, duty rate.
       </p>
       <p className="mt-4 max-w-prose leading-relaxed text-muted">
-        That is why its duties are so hard to look up. A Chapter 99 line does not carry a
-        product code; it points back at ordinary codes in prose, or names a country and
-        nothing else, or defers to a list printed only in a PDF of notes. Its rate is usually
-        not a number either, but an instruction — <em>the duty provided in the applicable
-        subheading, plus 25%</em>.
+        The result can also depend on the product&rsquo;s material, use and specifications, as
+        well as its country of origin, date of import, declared value and quantity.
       </p>
       <p className="mt-4 max-w-prose leading-relaxed text-muted">
-        This site works one of those answers out and shows every step, including the steps it
-        cannot take.
+        Chapter 99 comes next. It does not classify the product or replace its ordinary HTS
+        number. Instead, it contains temporary or special provisions that may change what an
+        already-classified product pays. Depending on the provision, a Chapter 99 rate may:
+      </p>
+      <ul className="mt-3 max-w-prose space-y-1.5 leading-relaxed text-muted">
+        {CHANGES.map((change) => (
+          <li key={change} className="flex gap-2.5">
+            <span aria-hidden className="text-faint">&middot;</span>
+            <span>{change}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 max-w-prose leading-relaxed text-muted">
+        Finding the right provision is not always straightforward. A Chapter 99 heading may
+        refer to ordinary HTS numbers in prose, apply only to products from certain countries,
+        or rely on lists and conditions found in the accompanying U.S. notes.
+      </p>
+
+      <h3 className="mt-8 text-xs font-medium uppercase tracking-wide text-faint">
+        The workflow
+      </h3>
+      <ol className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm">
+        {WORKFLOW.map((step, index) => (
+          <li key={step} className="flex items-center gap-2">
+            {index > 0 && <span aria-hidden className="text-faint">&rarr;</span>}
+            <span className="border border-rule px-2 py-1 text-muted">{step}</span>
+          </li>
+        ))}
+      </ol>
+
+      <p className="mt-6 max-w-prose leading-relaxed text-ink">
+        This site works through that process and shows how each part of the result was reached.
+        It also identifies questions the tariff data alone cannot answer, such as whether a
+        shipment qualifies for a particular exclusion or tariff-rate quota.
       </p>
 
       <section className="mt-14">
@@ -96,13 +147,13 @@ export default async function Home() {
             <span className="block text-xs text-faint">Search the schedule</span>
             <input
               type="search" name="q" required placeholder="steel plate, hot-rolled"
-              className="mt-1 w-72 border-b border-rule-strong bg-transparent py-1 text-ink
+              className="mt-1 w-72 border-b border-field bg-transparent py-1 text-ink
                          outline-none placeholder:text-faint focus:border-ink"
             />
           </label>
           <button
             type="submit"
-            className="border border-rule-strong px-4 py-1.5 text-sm text-ink
+            className="border border-field px-4 py-1.5 text-sm text-ink
                        hover:border-ink hover:bg-raised"
           >
             Search

@@ -25,7 +25,8 @@ export function LayerCard({ layer, dimmed = false }: { layer: Layer; dimmed?: bo
   return (
     <article
       id={layer.hts}
-      className={`border-t border-rule py-6 scroll-mt-6 ${dimmed ? "opacity-70" : ""}`}
+      className={`border-t border-rule py-6 scroll-mt-6 ${
+        dimmed ? "border-l-2 border-l-rule-strong pl-4" : ""}`}
     >
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <a

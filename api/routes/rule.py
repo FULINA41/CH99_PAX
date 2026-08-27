@@ -43,11 +43,13 @@ ORDER BY 1
 """
 
 NOTES = """
-SELECT rn.cited_text, rn.cited_subdivision, rn.match_precision,
+SELECT DISTINCT ON (coalesce(n.id::text, rn.cited_text))
+       rn.cited_text, rn.cited_subdivision, rn.match_precision,
        n.id AS note_id, n.label, n.content_kind, n.page_from, n.page_to,
        (SELECT count(*) FROM note_subheading s WHERE s.note_id = n.id) AS listed_codes
 FROM rule_note rn LEFT JOIN note n ON n.id = rn.note_id
-WHERE rn.rule_hts = %(hts)s ORDER BY n.label
+WHERE rn.rule_hts = %(hts)s
+ORDER BY coalesce(n.id::text, rn.cited_text), length(rn.cited_text) DESC
 """
 
 COUNTRIES = "SELECT country_name, country_code, relation FROM rule_country WHERE rule_hts = %(hts)s ORDER BY 1"

@@ -35,6 +35,11 @@ function Collapsed({
   );
 }
 
+export async function generateMetadata({ params }: { params: Params }) {
+  const { hts } = await params;
+  return { title: `${hts} · duty` };
+}
+
 export default async function DutyPage(
   { params, searchParams }: { params: Params; searchParams: Search },
 ) {
@@ -99,7 +104,7 @@ export default async function DutyPage(
           <span className="block text-xs text-faint">Country of origin</span>
           <select
             name="country" defaultValue={country ?? ""}
-            className="mt-1 w-52 border-b border-rule-strong bg-transparent py-1 text-ink
+            className="mt-1 w-52 border-b border-field bg-transparent py-1 text-ink
                        outline-none focus:border-ink"
           >
             <option value="">— not stated —</option>
@@ -121,7 +126,7 @@ export default async function DutyPage(
           <span className="block text-xs text-faint">Declared value (USD)</span>
           <input
             type="number" name="value" min="0" step="any" defaultValue={value}
-            className="mt-1 w-40 border-b border-rule-strong bg-transparent py-1 font-mono
+            className="mt-1 w-40 border-b border-field bg-transparent py-1 font-mono
                        tabular text-ink outline-none focus:border-ink"
           />
         </label>
@@ -132,7 +137,7 @@ export default async function DutyPage(
             </span>
             <input
               type="number" name="quantity" min="0" step="any" defaultValue={quantity}
-              className="mt-1 w-40 border-b border-rule-strong bg-transparent py-1 font-mono
+              className="mt-1 w-40 border-b border-field bg-transparent py-1 font-mono
                          tabular text-ink outline-none focus:border-ink"
             />
           </label>
@@ -141,13 +146,13 @@ export default async function DutyPage(
           <span className="block text-xs text-faint">Entered on</span>
           <input
             type="date" name="on" defaultValue={on ?? asked.on_date}
-            className="mt-1 border-b border-rule-strong bg-transparent py-1 font-mono
+            className="mt-1 border-b border-field bg-transparent py-1 font-mono
                        tabular text-ink outline-none focus:border-ink"
           />
         </label>
         <button
           type="submit"
-          className="border border-rule-strong px-4 py-1.5 text-sm text-ink
+          className="border border-field px-4 py-1.5 text-sm text-ink
                      hover:border-ink hover:bg-raised"
         >
           Recalculate

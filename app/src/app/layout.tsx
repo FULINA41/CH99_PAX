@@ -16,7 +16,8 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Chapter 99",
+  // Every page carried the same title, so tabs, history and bookmarks were indistinguishable.
+  title: { default: "Chapter 99", template: "%s · Chapter 99" },
   description:
     "What Chapter 99 of the US tariff schedule does to the duty on a good, and how every "
     + "step of that answer was reached.",

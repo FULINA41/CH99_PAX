@@ -5,6 +5,16 @@ import type { NoteDetail } from "@/lib/types";
 
 const PAGE = 200;
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    const { note } = await api<NoteDetail>(`/note/${id}?offset=0&limit=1`);
+    return { title: note.label };
+  } catch {
+    return { title: "Note" };
+  }
+}
+
 export default async function NotePage({
   params, searchParams,
 }: { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> }) {

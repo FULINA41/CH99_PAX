@@ -12,9 +12,12 @@
   --color-raised: oklch(97% 0.006 85);
   --color-ink: oklch(23% 0.014 265);
   --color-muted: oklch(50% 0.014 265);
-  --color-faint: oklch(64% 0.012 265);
+  --color-faint: oklch(54% 0.012 265);
   --color-rule: oklch(90% 0.006 265);
   --color-rule-strong: oklch(80% 0.008 265);
+  /* The only edge a text input has. rule-strong is 1.82:1 and decorative; WCAG 1.4.11
+     wants 3:1 for a control's boundary, so the control gets its own token. */
+  --color-field: oklch(64% 0.008 265);
 
   /* Operators. Deep and printed rather than alert-bright: this is a document, not an alarm. */
   --color-raise: oklch(45% 0.16 26);
@@ -37,9 +40,10 @@
     --color-raised: oklch(23% 0.014 265);
     --color-ink: oklch(93% 0.006 85);
     --color-muted: oklch(72% 0.012 265);
-    --color-faint: oklch(58% 0.012 265);
+    --color-faint: oklch(62% 0.012 265);
     --color-rule: oklch(30% 0.012 265);
     --color-rule-strong: oklch(40% 0.014 265);
+    --color-field: oklch(52% 0.014 265);
 
     --color-raise: oklch(72% 0.15 26);
     --color-raise-soft: oklch(28% 0.05 26);

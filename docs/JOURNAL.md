@@ -2060,3 +2060,41 @@ Second, on hitting 682 violations I reached for a plausible cause and implemente
 before checking whether it was the cause. That is the "checked the nearest artifact when the
 governing evidence was one query away" pattern from yesterday, applied to my own code this
 time. The query that settled it took twenty seconds.
+
+## 2026-08-27 (later) — the rest of the review, and a second stale-data catch
+
+**Steps two to four of the review, on branch `ui-polish`.** Enum leakage, monospace and
+vocabulary, then the remaining defects and contrast. Recorded as D-0063 to D-0066.
+
+**The note IDs had changed under me too.** `/note/444` — the page my review quoted for the
+duplicate-citation defect — returned `no note with id 444`. The parser changes in `cea503d`
+had been re-run against the database, so every note ID was different. Re-found the defect by
+query instead of by memory: 30 (note, provision) pairs cite the same note twice, worst is
+`9903.82.15` citing note 729 three times. **Second time in one session that evidence gathered
+an hour earlier had gone stale** — the first was `compute.py`. The lesson is the same and I
+had not applied it: re-derive the evidence, do not re-use the note from the review.
+
+**A finding that had already been fixed upstream.** My review flagged the search page's "trade
+programme" wording. `cea503d` had already replaced that whole block with per-action tags whose
+copy says "A tag names a trade action…". Only damage I did there was a duplicated "not in the
+schedule" marker from my own step-two pass, which I then removed. Worth noting because it is
+the failure mode of reviewing a running app rather than a commit.
+
+**Home page copy replaced at the user's direction.** The three opening paragraphs became the
+user's own explanation — classification first, then what Chapter 99 can do to an
+already-classified good, then the seven-step workflow, which is drawn as a wrapping chain of
+steps rather than a sentence full of arrows.
+
+**Verified.** `api`: 24 passed. `workflows`: 134 passed. `tsc --noEmit`: clean. Live checks —
+`/note/729` citing rows 11 with no duplicates and `9903.82.15` appearing once (was three);
+`/rule/9903.88.04` notes 1 row (was two); truncation now ends `…covered by an…` on a word
+boundary; `lists 1 code` singular; titles distinct on all six page types and the 404 serving a
+custom page with a way back. Contrast solved numerically, not eyeballed: faint 4.92/4.64 light,
+5.07/4.64 dark; field border 3.27/3.35.
+
+**Shipped without full verification, stated plainly.** The contrast figures come from my own
+oklch→sRGB script rather than a browser auditing tool, and text over the four `*-soft` chip
+backgrounds was never measured. The two SQL fixes (`DISTINCT ON`, the ellipsis) have no unit
+test because `api/tests` has no database fixture; they were checked against the live database
+only. Nothing in `app/` has a test runner at all, so every frontend change here — the formula
+strip, the monospace pass, the titles, the 404 — rests on rendering the page and reading it.

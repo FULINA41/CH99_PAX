@@ -141,6 +141,11 @@ export const money = (value: string | null): string | null =>
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   })}`;
 
+// Cutting mid-word and stopping dead reads as a rendering fault rather than as a shortened
+// line: "each covered by an excl" was what the exclusions list actually printed.
+export const clip = (text: string, limit: number): string =>
+  text.length <= limit ? text : `${text.slice(0, limit).replace(/\s+\S*$/, "")}\u2026`;
+
 export type Countries = {
   named: { country_code: string; name: string; provisions: number }[];
   all: { country_code: string; name: string; named_by_chapter_99: boolean }[];

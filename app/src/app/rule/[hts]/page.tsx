@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { api } from "@/lib/api";
+import { clip } from "@/lib/types";
 import type { RuleDetail } from "@/lib/types";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -10,6 +11,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dd className="min-w-0 text-muted">{children}</dd>
     </div>
   );
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ hts: string }> }) {
+  const { hts } = await params;
+  return { title: `${hts} · provision` };
 }
 
 export default async function RulePage({ params }: { params: Promise<{ hts: string }> }) {
@@ -142,7 +148,8 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
                 )}
                 <span className="ml-2 text-faint">
                   {note.listed_codes > 0
-                    ? `lists ${note.listed_codes.toLocaleString()} codes`
+                    ? `lists ${note.listed_codes.toLocaleString()} code${
+                        note.listed_codes === 1 ? "" : "s"}`
                     : "prose, no code list"}
                   {note.page_from && ` · PDF page ${note.page_from}`}
                 </span>
@@ -245,7 +252,7 @@ export default async function RulePage({ params }: { params: Promise<{ hts: stri
                       {edge[group.key]}
                     </a>
                     <span className="ml-2 text-muted">
-                      {(edge.description ?? "").slice(0, 110)}
+                      {clip(edge.description ?? "", 110)}
                     </span>
                   </li>
                 ))}

@@ -22,13 +22,17 @@ ORDER BY s.ordinal OFFSET %(offset)s LIMIT %(limit)s
 """
 
 CITING = """
-SELECT rn.rule_hts, rn.cited_text, rn.cited_subdivision, rn.match_precision,
-       r.rate_text, r.rate_kind, r.status, left(r.full_description, 180) AS description,
+SELECT DISTINCT ON (rn.rule_hts)
+       rn.rule_hts, rn.cited_text, rn.cited_subdivision, rn.match_precision,
+       r.rate_text, r.rate_kind, r.status,
+       CASE WHEN length(r.full_description) > 180
+            THEN regexp_replace(left(r.full_description, 180), '\s+\S*$', '') || '…'
+            ELSE r.full_description END AS description,
        p.label AS programme
 FROM rule_note rn
 JOIN rule r ON r.hts = rn.rule_hts
 LEFT JOIN trade_programme p ON left(r.hts, 7) = p.heading_prefix
-WHERE rn.note_id = %(id)s ORDER BY rn.rule_hts
+WHERE rn.note_id = %(id)s ORDER BY rn.rule_hts, length(rn.cited_text) DESC
 """
 
 # The parent and its subdivisions, so a reader can walk the note the way the PDF prints it.

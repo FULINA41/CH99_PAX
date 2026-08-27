@@ -2746,3 +2746,57 @@ mark them up, which is a bigger change than this one.
 
 Search-page wording ("trade programme") had already been superseded on `task3` by the tag
 treatment in `cea503d`, so only the duplicated "not in the schedule" marker was removed there.
+
+## D-0065 — One row per fact, and a truncation that looks deliberate
+**Date:** 2026-08-27 · **Area:** api · **Status:** accepted
+
+**Context.** A provision may cite the same note twice with different wording — 9903.88.04 names
+both "U.S. note 20(g)" and "U.S. note 20(g) to this subchapter". `rule_note` stores both, which
+is right, but both pages joined straight onto it: `/rule/9903.88.04` drew the note twice and
+`/note/{id}` listed the provision twice, colliding on the React `key` as well. 30 (note,
+provision) pairs are affected. Separately, `left(full_description, 180)` and a `slice(0, 110)`
+cut mid-word with nothing to mark it: the exclusions list printed "each covered by an excl".
+
+**Options.**
+- Deduplicate in the page — two components would each need to know it.
+- Deduplicate in SQL, choosing which citation survives.
+
+**Decision.** `DISTINCT ON` in both queries, ordered by `length(cited_text) DESC` so the fuller
+citation is the one kept. `/rule` keys on `coalesce(note_id::text, cited_text)`, so citations
+that matched no note are still listed separately rather than collapsing into one. Truncation
+trims back to a word boundary and appends an ellipsis, in SQL for the note page and via
+`clip()` for the rule page.
+
+**Tradeoff.** The shorter citation form is no longer visible anywhere, and it is real data —
+a reader curious about how the provision words its reference sees only one of the two. The
+payload is the place to recover it if that ever matters. Verified against the live database
+rather than in a unit test: both fixes are SQL, and `api/tests` has no database fixture.
+
+**Feeds.** SUBMISSION.md §2
+
+## D-0066 — Meet WCAG AA on the small print, which is where the explanations are
+**Date:** 2026-08-27 · **Area:** app · **Status:** accepted
+
+**Context.** `--color-faint` measured **3.27:1** on paper in light and **4.31:1** in dark,
+against the 4.5:1 AA needs for body text — and it is used 44 times, 23 of them at `text-xs`,
+carrying the back link, every form label, every table header and most of the explanatory prose
+this site exists to show. `--color-rule-strong` at **1.82:1** was the only edge a text input
+had, against the 3:1 WCAG 1.4.11 wants for a control boundary. `opacity-70` on dimmed cards
+pushed their text down again.
+
+**Options.**
+- Darken `rule-strong` — it is also every hairline on the page, which would make the whole
+  document heavier to fix a control.
+- A token for the control boundary, and a `faint` that clears AA on both surfaces.
+
+**Decision.** `faint` is `oklch(54%)` light / `oklch(62%)` dark, chosen by solving for 4.5:1
+against `raised`, the tighter of the two backgrounds. Measured: light 4.92 on paper and 4.64 on
+raised; dark 5.07 and 4.64. New `--color-field` (3.27:1 light, 3.35:1 dark) is the border on
+every input, select and button. Dimmed cards lost the opacity and gained
+a rule down the left side, which groups them without touching a foreground colour.
+
+**Tradeoff.** `faint` and `muted` are now closer together, so the three-step text hierarchy is
+flatter than it was drawn. Contrast was measured with a script, not with a browser tool, and
+only against the two surface colours — text over the `*-soft` chip backgrounds is unmeasured.
+
+**Feeds.** SUBMISSION.md §2
