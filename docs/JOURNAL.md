@@ -1883,3 +1883,70 @@ workflows 133 passed (7 new)   api 18 passed (3 new)   tsc --noEmit clean
 `9903.05.39` operator reading. Both came from stopping at the first piece of evidence that fit.
 The pattern is specific enough to name: **I checked the nearest artifact — a sibling heading, a
 rate string — when the governing document was one query away.**
+
+## 2026-08-26 — Asked how accurate the rates are, and what could honestly be answered
+
+The question has no direct answer here: **there is no set of correct duty rates in this
+project**, and building one means doing customs brokerage. Any accuracy percentage I produced
+would have been invented. So I said that first, then built what can actually be measured.
+
+**Invariants.** `api/audit.py` — nine statements true of every correct answer, swept over
+`codes × origins`. It found two defects in the first run, both mine, both in the ceiling:
+
+```
+0406.20.15.00 / JP   floor 200%   ceiling  40%
+2401.20.87.30 / JP   floor 350%   ceiling  40%
+```
+
+Replacements are mutually exclusive (D-0058), so the uncertain ones are **alternatives to**
+whatever already stands in for the base, not extra duties to add. My first version appended
+them all and let the sort decide; the second took the highest and still lowered the answer
+where nothing certain had replaced the base. Neither was reachable by reading the code — both
+needed the sweep.
+
+```
+20,000 queries (2,000 codes x 10 origins)     0 violations
+```
+
+**Ground truth, where it exists.** The payload is the one thing that can be checked against:
+14,467 base rates are stated on their own row rather than inherited, and **all 14,467 reproduce
+their payload string exactly**. That is parser fidelity — the rate was read right — not duty
+correctness, and the entry says so.
+
+That check also found a defect, and it was visible on screen:
+
+```
+0105.11.00  "0.9¢ each"  ->  0.009000000000000001
+duty page:  total expression: 7.5% + $0.009000000000000001/each
+```
+
+`float(cents) / 100` — 46.3/100 in binary is 0.46299999999999997, and the `numeric` column kept
+every digit. 625 rows. Fixed by parsing as `Decimal` (D-0060). **No money was ever wrong**: the
+error is 3e-17 per unit and would need 1.7e14 units to move a cent. It was worth fixing because
+a stored rate that is not the printed rate is a claim this schema should not have to qualify —
+and because two rate tests could then drop `pytest.approx` and assert the printed value, which
+is the better test. `approx` had been accommodating the defect.
+
+**What the audit reports instead of accuracy:**
+
+```
+37.4%  goods described in prose      37.3%  fully determined
+17.5%  exclusions may apply           5.0%  origin set not listable
+ 1.6%  competing replacements         1.2%  alternative reductions
+```
+
+Just over a third of answers close on these three sources alone. That is not a defect rate; it
+is the proportion of the question this data can settle, and every other category is named on
+the page with somewhere to go.
+
+**The limit of all of it, stated because it is easy to oversell.** Invariants prove
+consistency, not correctness: a rule applied wrongly but consistently passes all nine. The
+origin-scoped bucket is 37% of answers and the audit only checks that those are kept out of the
+figure — never that keeping them out was right.
+
+**Agent notes.** My first pass at measuring the payload compared a `Decimal` from the database
+against a `float` from the parser, reported **4,151 mismatches**, and printed pairs that looked
+identical — `stored ('6.8%',replace,6.8) vs payload ('6.8%',replace,6.8)`. I nearly reported a
+28% parser failure rate. The tell was that the printed values matched; the fields I compared
+but did not print were where the difference lived. **A check that fails has to be checked
+before it is believed** — and printing less than you compare is how you end up unable to.

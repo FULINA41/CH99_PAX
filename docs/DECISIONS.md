@@ -2428,6 +2428,115 @@ one of them applies, not that it is the cheaper one.
 
 ---
 
+## D-0059 — Audit against invariants, because there is no set of correct answers to check against
+
+**Date:** 2026-08-26 · **Area:** app, tooling · **Status:** accepted
+
+**Context.** Asked how accurate the rates are. There is no reference set of correct duty rates
+in this project and building one means being a customs broker, so **accuracy cannot be
+measured** and any percentage claiming to be one would be invented. Two things can be measured
+instead, and both found real defects within minutes.
+
+**Options.**
+- Hand-check a handful of cases. Finds what you thought to look for.
+- Build a ground-truth set from CBP rulings. A project of its own, and CROSS gives a
+  classification, not a computed duty.
+- Assert the properties every correct answer has, and sweep thousands of real queries.
+
+**Decision.** `api/audit.py`. Nine invariants over `codes × origins`, plus a separate check of
+every stored base rate against the payload string it was parsed from.
+
+```
+cd api && uv run python -m audit --codes 2000     # 20,000 queries
+```
+
+The invariants: no provision in two buckets; a provision in the total names the queried origin
+if it names any; nothing not-in-force is counted; a `not_eligible` layer really has a failing
+condition; the ceiling is never below the floor; only-additive layers never lower the rate; a
+query with no layers totals the base; no two replacements survive in one figure; the money is
+exactly value × percent.
+
+**What it caught.** Two defects, both in the ceiling, both mine, neither reachable by reasoning
+about the code:
+
+```
+0406.20.15.00 / JP   floor 200%   ceiling  40%
+2401.20.87.30 / JP   floor 350%   ceiling  40%
+```
+
+Replacements are mutually exclusive, so the uncertain ones are **alternatives to** whatever
+already stands in for the base, not extra duties to pile on. Adding them all let the last one
+win; taking the highest still lowered the answer where nothing certain had replaced the base.
+The worst case now takes every addition and at most one replacement — the highest, and only
+where it beats what the figure already rests on. 20,000 queries, no violations.
+
+**The payload check is the one place there is ground truth**: 14,467 base rates are stated on
+their own row rather than inherited, and **14,467 reproduce their payload string exactly**.
+That is parser fidelity, not duty correctness — it says the rate was read right, not that the
+right provisions were applied to it.
+
+**What the audit reports instead of accuracy** is how settled each answer is, which is the
+honest form of the question:
+
+```
+37.4%  goods described in prose        an origin-scoped provision might cover them
+37.3%  fully determined
+17.5%  exclusions may apply            a question about the goods
+ 5.0%  origin set not listable         General Note 3(b), note 41(c), a CBP determination
+ 1.6%  competing replacements          in-quota vs over-quota
+ 1.2%  alternative reductions          told apart by CAS number
+```
+
+**Just over a third of answers are fully determined.** That is not a defect rate — it is the
+proportion of questions these three sources can close on their own, and every one of the other
+categories is named on the page with somewhere to go.
+
+**Tradeoff.** Invariants prove consistency, not correctness: a rule applied wrongly but
+consistently passes every one of them. The origin-scoped bucket is the clearest example — 37%
+of answers carry one, and the audit only checks that they are excluded from the figure, never
+that excluding them was right. A ground-truth set remains the only way to answer what was
+actually asked, and it is out of scope here.
+
+**Feeds.** SUBMISSION.md §3, §5
+
+---
+
+## D-0060 — Parse rates as decimals, because the schedule prints decimals
+
+**Date:** 2026-08-26 · **Area:** parser · **Status:** accepted
+
+**Context.** Found by the audit above. `parse_rate` computed a cents rate as
+`float(cents) / 100`, and in binary floating point `46.3 / 100` is `0.46299999999999997`. The
+`numeric` column stored every digit, and a duty page printed:
+
+```
+total expression:  7.5% + $0.009000000000000001/each      (0105.11.00, "0.9¢ each")
+```
+
+625 rows carried the noise and it reached the screen.
+
+**Options.**
+- Round on display. Hides it in one place and leaves the stored value wrong.
+- Round on store, to say six decimals. Picks a precision the schedule never stated.
+- Parse as `Decimal` throughout.
+
+**Decision.** The third. `Rate.ad_valorem_pct` and `Rate.specific_amount` are `Decimal`, and
+the money path was already `Decimal` end to end, so nothing downstream changed. Rows with more
+than six decimal places: 625 → 0. Two rate tests could drop `pytest.approx` and assert the
+printed value exactly, which is the better test — `approx` was there to accommodate the defect.
+
+**Tradeoff.** `33 1/3%` is exactly 100/3, which no decimal writes, so it keeps the default
+28-digit context precision and stays the one assertion that is still approximate. It is
+approximate in the arithmetic rather than in the parsing, which is the right place for it.
+
+**Materiality, stated plainly:** the error was 3×10⁻¹⁷ per unit and would need 1.7×10¹⁴ units
+to move a single cent, so **no money was ever wrong**. It was fixed because a stored rate that
+is not the printed rate is a claim this schema should not have to qualify.
+
+**Feeds.** SUBMISSION.md §2
+
+---
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a

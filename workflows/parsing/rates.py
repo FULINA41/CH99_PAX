@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 
 WHITESPACE = re.compile(r'\s+')
 
@@ -28,8 +29,8 @@ KINDS = ('free', 'replace', 'additive', 'no_change', 'prose', 'none')
 class Rate:
     kind: str
     text: str | None
-    ad_valorem_pct: float | None = None
-    specific_amount: float | None = None
+    ad_valorem_pct: Decimal | None = None
+    specific_amount: Decimal | None = None
     specific_unit: str | None = None
 
 
@@ -55,13 +56,13 @@ def parse_rate(text: str | None) -> Rate:
 
     lowered = cleaned.lower()
     if lowered == 'free':
-        return Rate('free', cleaned, ad_valorem_pct=0.0)
+        return Rate('free', cleaned, ad_valorem_pct=Decimal(0))
     if lowered in NO_CHANGE:
         return Rate('no_change', cleaned)
 
     additive = ADDITIVE.match(cleaned)
     if additive:
-        return Rate('additive', cleaned, ad_valorem_pct=float(additive.group(1)))
+        return Rate('additive', cleaned, ad_valorem_pct=Decimal(additive.group(1)))
 
     # A compound rate is two operands joined by '+'. Three or more -- 94 strings do it,
     # e.g. copper + lead + zinc content -- needs a second amount column the schema does
@@ -92,17 +93,26 @@ def parse_rate(text: str | None) -> Rate:
 def _operand(part: str) -> tuple | None:
     match = PERCENT.match(part)
     if match:
-        return ('pct', float(match.group(1)))
+        return ('pct', Decimal(match.group(1)))
 
     match = FRACTION_PERCENT.match(part)
     if match:
         whole, numerator, denominator = (int(g) for g in match.groups())
-        return ('pct', whole + numerator / denominator)
+        # '33 1/3%' is exactly 100/3, which no decimal writes. Kept at the default context
+        # precision rather than rounded to a tidy 33.33: a duty of a third is a third, and
+        # the display layer is where a reader-facing number gets shortened.
+        return ('pct', Decimal(whole) + Decimal(numerator) / Decimal(denominator))
 
     match = AMOUNT.match(part)
     if match:
         dollar, dollars, cents, slash_unit, each = match.groups()
-        amount = float(dollars) if dollar else float(cents) / 100
+        # Decimal, not float: 46.3/100 in binary floating point is 0.46299999999999997, which
+        # the numeric column stored verbatim and a duty page then printed as
+        # '$0.009000000000000001/each'. 625 rows carried that noise. It never moved a cent --
+        # the error is 3e-17 per unit and would need 1.7e14 units to reach one -- but a stored
+        # rate that is not the printed rate is not something this schema should have to
+        # qualify. D-0059.
+        amount = Decimal(dollars) if dollar else Decimal(cents) / Decimal(100)
         return ('spec', amount, (slash_unit or each).strip())
 
     return None

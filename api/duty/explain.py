@@ -8,7 +8,7 @@ from duty import queries
 from duty.applicable import applicable
 from duty.compute import ASSUMPTION, combine, term
 from models import (BaseRate, Classification, DutyStack, ExclusionGroup, Layer, Query,
-                    Total, Unknown)
+                    Term, Total, Unknown)
 from reference.column2 import COLUMN_2_COUNTRIES, column_for
 from reference.sources import UNKNOWNS
 
@@ -101,13 +101,13 @@ def explain(
     replacements = [layer for layer in layers if layer.term.operator == "replace"]
     competing: list[Layer] = []
     if len(replacements) > 1:
-        competing = sorted(replacements, key=_ceiling_of)[1:]
+        competing = sorted(replacements, key=_rate_of)[1:]
         layers = [layer for layer in layers if layer not in competing]
 
     expression, percent, specific, money = combine(
         base.term, layers, declared_value_usd=declared_value_usd)
     maybe = origin_scoped + origin_unresolved + competing
-    ceiling = combine(base.term, layers + maybe,
+    ceiling = combine(base.term, _worst_case(base.term, layers, maybe),
                       declared_value_usd=declared_value_usd) if maybe else None
 
     return DutyStack(
@@ -194,8 +194,49 @@ def _group_exclusions(exclusions: list[Layer]) -> list[ExclusionGroup]:
             for (note_id, label), provisions in sorted(grouped.items(), key=lambda kv: kv[0][1] or "")]
 
 
-def _ceiling_of(layer: Layer) -> Decimal:
+def _rate_of(layer: Layer) -> Decimal:
+    # Compared on the percentage alone. A replacement carrying only a per-unit amount sorts as
+    # zero, which is wrong in principle and affects no provision in this release -- every
+    # replacement in Chapter 99 that competes with another states a percentage.
     return layer.term.ad_valorem_pct if layer.term.ad_valorem_pct is not None else Decimal(0)
+
+
+def _worst_case(base: Term, layers: list[Layer], maybe: list[Layer]) -> list[Layer]:
+    """The most a shipment could owe if every uncertain provision also covered it.
+
+    Replacements are mutually exclusive -- U.S. note 1 says each applies *in lieu of* the
+    ordinary rate, so two cannot both -- so the uncertain ones are not extra duties to pile
+    on but **alternatives** to whatever already stands in for the base. Two ways that goes
+    wrong, both found by the audit rather than by reasoning:
+
+      * adding them all and letting the last one win reported 200% and "up to 40%" on
+        0406.20.15.00 from Japan;
+      * taking the highest of them still lowers the answer when nothing certain replaced the
+        base and an uncertain provision would -- 2401.20.87.30 from Japan, floor 350%, and a
+        40% alternative.
+
+    An uncertain provision **not** applying is itself one of the cases, so a replacement joins
+    the worst case only where it beats what the figure already rests on.
+
+    Args:
+        base: The base schedule term, which stands unless something certain replaced it.
+        layers: The provisions counted in the figure.
+        maybe: The ones that might also apply.
+
+    Returns:
+        Every addition from both, and at most one replacement: the highest, and only if it is
+        higher than what the floor already uses.
+    """
+    candidates = layers + maybe
+    replacements = [layer for layer in candidates if layer.term.operator == "replace"]
+    additions = [layer for layer in candidates if layer.term.operator != "replace"]
+    if not replacements:
+        return additions
+
+    certain = [layer for layer in layers if layer.term.operator == "replace"]
+    floor_rate = _rate_of(certain[0]) if certain else (base.ad_valorem_pct or Decimal(0))
+    highest = max(replacements, key=_rate_of)
+    return additions + ([highest] if _rate_of(highest) >= floor_rate else certain)
 
 
 def _unknowns(base, layers, origin_scoped, origin_unresolved, competing, reductions,

@@ -174,9 +174,17 @@ Unit tests over the parsing pure functions -- rates, hierarchy, citations, count
 effectivity. No linter and no build step; if you add one, add its command here.
 
 ```bash
-cd workflows && uv run pytest        # 115 tests, no database or network needed
-cd api       && uv run pytest        # 15 tests, same
+cd workflows && uv run pytest        # 134 tests, no database or network needed
+cd api       && uv run pytest        # 18 tests, same
 docker compose exec -T app npx tsc --noEmit
+```
+
+There is no set of correct duty rates to check answers against, so `api/audit.py` checks the
+properties every correct answer has instead, over thousands of real queries. It needs a parsed
+database. Non-zero exit means an invariant was violated. See D-0059.
+
+```bash
+cd api && uv run python -m audit --codes 2000     # 20,000 queries
 ```
 
 ## Services

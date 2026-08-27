@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 
 from parsing.rates import parse_rate
@@ -20,15 +22,15 @@ def test_the_operator_is_read_from_the_printed_rate(text, kind):
 
 def test_cents_are_converted_to_dollars_so_amounts_are_comparable():
     # 46.3¢/kg and $1.104/kg must be multipliable without re-reading the symbol.
-    assert parse_rate("46.3¢/kg").specific_amount == pytest.approx(0.463)
-    assert parse_rate("$1.104/kg").specific_amount == pytest.approx(1.104)
+    assert parse_rate("46.3¢/kg").specific_amount == Decimal("0.463")
+    assert parse_rate("$1.104/kg").specific_amount == Decimal("1.104")
 
 
 def test_a_compound_rate_keeps_both_operands():
     rate = parse_rate("4.4¢/kg + 8.5%")
 
     assert (rate.specific_amount, rate.specific_unit, rate.ad_valorem_pct) == (
-        pytest.approx(0.044), "kg", 8.5)
+        Decimal("0.044"), "kg", Decimal("8.5"))
 
 
 def test_a_three_part_rate_is_prose_rather_than_a_truncated_pair():
@@ -46,7 +48,16 @@ def test_a_qualified_basis_stays_in_the_unit_instead_of_being_dropped():
 
 
 def test_a_fractional_percentage_is_computed_not_abandoned():
-    assert parse_rate("33 1/3%").ad_valorem_pct == pytest.approx(100 / 3)
+    # A third is not a decimal, so this one is the exception that stays approximate -- and it
+    # is approximate in the arithmetic, not in the parsing.
+    assert parse_rate("33 1/3%").ad_valorem_pct == pytest.approx(Decimal(100) / 3)
+
+
+def test_a_rate_printed_in_cents_is_stored_as_the_dollars_it_prints():
+    # Read as a float, 46.3/100 is 0.46299999999999997, and the numeric column kept every
+    # digit -- a duty page printed "$0.009000000000000001/each". No money moved; the stored
+    # rate simply was not the printed rate.
+    assert parse_rate("0.9¢ each").specific_amount == Decimal("0.009")
 
 
 @pytest.mark.parametrize("text", [
@@ -72,7 +83,7 @@ def test_a_duty_of_is_read_as_an_ordinary_additive_rate():
     rate = parse_rate("The duty provided in the applicable subheading + a duty of 25%")
 
     assert rate.kind == "additive"
-    assert rate.ad_valorem_pct == 25.0
+    assert rate.ad_valorem_pct == Decimal(25)
 
 
 def test_an_additive_rate_on_a_narrower_basis_stays_unparsed():

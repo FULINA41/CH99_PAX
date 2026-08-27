@@ -271,8 +271,25 @@ found, rather than failing.
 | Compound units do not collapse | A code with a `¢/kg` component and no quantity reports the specific term uncomputed, not zero |
 | Coverage is fast | Duty page 70 ms after materialising, from 2,034 ms |
 | No total depends on heading order | 2,160 sampled queries swept: 346 order-dependent before, 0 after |
+| Invariants hold | `api/audit.py` over **20,000 queries**: no provision in two buckets, none counted while out of force, the ceiling never below the floor, money exactly value × percent — **0 violations** |
+| Base rates reproduce their source | 14,467 rates stated on their own row, **14,467 match the payload string exactly** |
 | Tests | 133 in `workflows`, 18 in `api`, neither needing a database or the network; `tsc --noEmit` clean |
 | Zero client JavaScript for interaction | Disclosure, filtering and navigation are `<details>`, `<select>` and GET forms |
+
+**How much of an answer is settled**, from the same audit — the honest form of "how accurate
+is it", since there is no set of correct rates to score against (D-0059):
+
+```
+37.4%  goods described in prose      an origin-scoped provision might cover them
+37.3%  fully determined
+17.5%  exclusions may apply          a question about the goods, not the code
+ 5.0%  origin set not listable       General Note 3(b), a note's exemption list, a CBP call
+ 1.6%  competing replacements        in-quota versus over-quota
+ 1.2%  alternative reductions        told apart by CAS number
+```
+
+Just over a third close on these sources alone. Every one of the rest is named on the page,
+with somewhere to go — which is the whole design, measured rather than asserted.
 
 **Nothing on any of these screens was written by a language model.** A machine-written
 layer — a paraphrase of each provision and a label on each prose note — was built, measured
