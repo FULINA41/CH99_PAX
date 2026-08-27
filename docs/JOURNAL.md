@@ -2215,3 +2215,71 @@ fix; I had already been told this once by the identical failure two commits ago.
 new band explains them again. The sentence is API copy and this task was scoped to the
 frontend, so the duplication stays. The page components are still untested — they fetch, and
 there is no fixture for that; only `FormulaStrip` is covered.
+
+## 2026-08-27 — Fetched Revision 17 to find out whether the revision problem was a real one
+
+P-m recorded that the documented counts are Revision 16 and the USITC now serves Revision 17.
+The question that actually mattered was not "do the numbers move" — obviously they do — but
+**whether the parsers survive a revision they were never written against**. That is checkable,
+so I checked it instead of writing an assumption around it.
+
+Non-destructive: a new release lands in its own directory and Revision 16 stays.
+
+```
+scrape_run                      2026HTSRev17  Revision 17 (2026)
+  base       fetched  10,349,906 B    ch99  fetched   1,996,519 B
+  notes_pdf  fetched  13,992,373 B
+
+parse_run                       parsed clean, no errors
+```
+
+| | Rev 16 | Rev 17 |
+| --- | ---: | ---: |
+| `hts_base` | 26,246 | 26,246 |
+| `rule` | 3,098 | 3,103 |
+| `note` | 345 | 350 |
+| `note_subheading` | 48,053 | 50,359 |
+| `note_base_match` | 136,325 | 141,656 |
+| `rule_base_match` / `rule_edge` / `rule_identifier` / `rule_condition` | | all unchanged |
+| `parse_issue` | 848 | 869 |
+
+18 of the 21 new issues are `rate_silent_note_decides`, a category that already existed. The
+audit reports **no violations over 8,000 queries** on Revision 17, and every worked example
+returns the same answer it does on Revision 16. **The parsers did not lose ground.**
+
+**The finding that decided the write-up.** Pinning cannot recover Revision 16:
+
+```
+scrape_run --release 2026HTSRev16
+  base       skipped     endpoint cannot serve a past release
+  ch99       skipped     endpoint cannot serve a past release
+  notes_pdf  unchanged
+```
+
+Only the notes PDF has a stable per-revision URL. With nothing already on disk those two carry
+no sha256, and `build_manifest` writes `"complete": false` — checked against the function
+directly rather than inferred:
+
+```
+build_manifest(..., [base skipped sha=None, ch99 skipped sha=None, notes fetched sha=abc])
+  -> complete = False
+```
+
+`load_payloads` then refuses the directory, by design (D-0007). So **a reviewer cannot obtain
+Revision 16 at all**, and no instruction in SUBMISSION.md could have made them.
+
+Decision was the user's: keep the figures at Revision 16 and declare it (D-0071). The argument
+that settled it is that `DECISIONS.md` and `JOURNAL.md` are append-only records of what was
+measured when — a re-baseline would either contradict them or require rewriting dated
+measurements. SUBMISSION.md §5 carries the delta table and the evidence above, so a reviewer
+whose numbers differ can see exactly how and why.
+
+Database restored to Revision 16 afterwards; `data/raw/2026HTSRev17/` left in place as the
+evidence, which means an unpinned `parse_run` in this working copy loads Revision 17. Recorded
+in D-0071 because it is a trap for whoever runs it here next.
+
+**Agent notes.** I had written P-m as a choice between two costs without knowing what either
+cost. Fetching and parsing Revision 17 took four minutes and turned "the parsers might not
+handle it" from the unstated fear behind the question into a measured "they do". The write-up
+is a different document for it: **"the documentation is stale and nothing else is"** is a claim
+worth making, and I could not have made it from the armchair.

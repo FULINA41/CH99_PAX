@@ -2792,22 +2792,65 @@ failed when it had not.
 
 **Feeds.** SUBMISSION.md §1
 
+## D-0071 — Keep the documented counts at Revision 16 and declare it, rather than re-baselining
+
+**Date:** 2026-08-27 · **Area:** scraper, docs · **Status:** accepted, closes P-m
+
+**Context.** Every figure in this repository is measured against **2026HTSRev16**. On
+2026-08-27 the USITC is serving **2026HTSRev17**, and `data/` is gitignored, so a reviewer
+cloning this repository and running Part 1 gets Revision 17 and different counts everywhere.
+
+Pinning does not rescue it. Measured, not assumed:
+
+```
+scrape_run --release 2026HTSRev16
+  base       skipped     endpoint cannot serve a past release
+  ch99       skipped     endpoint cannot serve a past release
+  notes_pdf  unchanged   13,969,270 B
+```
+
+Only the notes PDF has a stable per-revision URL. With no files already on disk those two
+carry no sha256, so `build_manifest` writes `"complete": false` — verified directly against
+the function — and `load_payloads` refuses the directory by design (D-0007). **Revision 16 is
+unreachable from a cold clone.**
+
+**Options.**
+- Re-baseline every documented figure on Revision 17. The reviewer's numbers then match.
+- Keep Revision 16 and declare the assumption.
+
+**Decision.** The second, on the user's call. The deciding argument is that `DECISIONS.md` and
+`JOURNAL.md` are append-only records of what was measured and when; a re-baseline would either
+leave them contradicting the reference docs or require rewriting dated measurements, which this
+project forbids for good reason. `SCHEMA.md` already states the release in its first paragraph;
+SUBMISSION.md §5 now states it with the delta table and the reason a reviewer's numbers differ.
+
+**Checked before deciding, which is what makes the declaration worth anything.** Revision 17
+was fetched and parsed on 2026-08-27. It parses cleanly: `parse_issue` 848 → 869 with 18 of the
+21 in a pre-existing category, `api/audit.py` reports no violations over 8,000 queries, and
+every worked example returns the same answer. The delta is five new provisions and five new
+notes. **So the documentation is stale, and nothing else is.**
+
+**Tradeoff.** A reviewer cannot reproduce a single count in these documents, and has to take
+the delta table on trust. That is a real cost and the reason the alternative was seriously
+considered: an unreproducible figure is a weaker claim than a reproducible one, however well
+explained. The mitigation is that the *behaviour* is reproducible even though the counts are
+not — the tests, the audit and the worked examples all pass on Revision 17.
+
+`data/raw/2026HTSRev17/` is left on disk as the evidence for the paragraph above. It also means
+an unpinned `parse_run` in this working copy loads Revision 17 rather than the documented data,
+which is a trap for the next person to run it here and is why this entry says so.
+
+**Feeds.** SUBMISSION.md §5
+
 # Pending decisions
 
 Open questions raised by verified evidence (see JOURNAL 2026-08-20). Each becomes a
 numbered entry above once decided — do not decide them here.
 
-- **P-m · The documented counts cannot be reproduced from a cold start today.** Every number
-  in `SCHEMA.md`, `DECISIONS.md` and `PART3_APP.md` is measured against **2026HTSRev16**.
-  USITC now serves **2026HTSRev17** (checked 2026-08-27), and `data/` is gitignored — so a
-  grader cloning this repository runs Part 1, gets Revision 17, and sees different counts
-  everywhere. Pinning does not rescue it: verified this session that
-  `scrape_run --release 2026HTSRev16` returns `skipped — endpoint cannot serve a past release`
-  for **base and ch99**; only the notes PDF has a stable URL. Decide between re-baselining
-  every documented figure on Revision 17 (and re-reading whatever new prose it contains), or
-  stating the revision as an assumption in SUBMISSION.md §5 and letting the counts be
-  historical. Neither is free: the first is a re-verification of the whole project, the second
-  ships documents whose numbers a reviewer cannot reproduce.
+- ~~**P-m · The documented counts cannot be reproduced from a cold start today.**~~ Settled by
+  **D-0071**: the figures stay at Revision 16 and SUBMISSION.md §5 declares it, with the delta
+  table and the evidence that Revision 17 parses cleanly. Revision 16 is unreachable from a
+  cold clone — the export endpoints serve the current release only.
 
 - ~~**P-l · Stacking order between a replacement and an additional duty.**~~ Settled by
   **D-0058**: the schedule states the rule in U.S. note 1 to each subchapter and in 31 notes
