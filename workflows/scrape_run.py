@@ -14,7 +14,7 @@ FROM source_fetch WHERE run_id = %s ORDER BY source_key
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch the three HTS sources.")
-    parser.add_argument("--release", help="pin a specific release, e.g. 2026HTSRev16")
+    parser.add_argument("--release", help="pin a specific release, e.g. 2026HTSRev17")
     parser.add_argument("--force", action="store_true", help="rewrite payloads even if unchanged")
     args = parser.parse_args()
 

@@ -14,7 +14,7 @@ def load_manifest(release: str | None = None, root: Path | None = None) -> dict[
     """Find a release directory the parser is allowed to read, and describe it.
 
     Args:
-        release: Release to parse, e.g. ``2026HTSRev16``. When omitted, the most
+        release: Release to parse, e.g. ``2026HTSRev17``. When omitted, the most
             recently resolved complete directory under ``data/raw/`` is used.
         root: Data root. Falls back to ``DATA_DIR``.
 

@@ -3,7 +3,7 @@
 Every table and column in [`db/schema.sql`](../db/schema.sql): what it holds, and **when
 it is actually used**. The reasoning behind each shape is in
 [`DECISIONS.md`](DECISIONS.md); the evidence it argues from is in
-[`DATA_INVENTORY.md`](DATA_INVENTORY.md). Counts are from release **2026HTSRev16**.
+[`DATA_INVENTORY.md`](DATA_INVENTORY.md). Counts are from release **2026HTSRev17**.
 
 ---
 
@@ -81,17 +81,17 @@ erDiagram
 | --- | ---: | --- | --- | --- |
 | `source_fetch` | 3 per run | provenance | Which download each row came from | A reviewer asking where the data is from; diagnosing two runs that disagree |
 | `hts_base` | 26,246 | fact | Chapters 1–97: the codes goods are classified under | Step one of every duty calculation |
-| `rule` | 3,098 | fact | Chapter 99 provisions: what modifies those duties | Step two of every duty calculation |
+| `rule` | 3,103 | fact | Chapter 99 provisions: what modifies those duties | Step two of every duty calculation |
 | `rule_edge` | 14,229 | fact | The codes a provision names, unresolved | Auditing the matcher; following exclusions |
-| `rule_country` | 503 | fact | The countries a provision names | The moment a user types "China" |
+| `rule_country` | 507 | fact | The countries a provision names | The moment a user types "China" |
 | `rule_identifier` | 1,229 | fact | CAS numbers | Choosing between several provisions on one base code |
-| `note` | 345 | fact | U.S. notes from the PDF | A user asking "on what authority" |
-| `rule_note` | 977 | fact | A provision citing a note | Jumping from a provision to the legal text |
-| `note_subheading` | 48,053 | fact | The codes a list-type note prints | Working out what Section 301 covers |
+| `note` | 350 | fact | U.S. notes from the PDF | A user asking "on what authority" |
+| `rule_note` | 982 | fact | A provision citing a note | Jumping from a provision to the legal text |
+| `note_subheading` | 50,359 | fact | The codes a list-type note prints | Working out what Section 301 covers |
 | `rule_base_match` | 16,958 | **interpretation** | The base rows a provision names itself | The main query once a user supplies a code |
-| `note_base_match` | 136,325 | **interpretation** | The base rows a note's list reaches | The other half of that query, joined through `rule_note` |
+| `note_base_match` | 141,656 | **interpretation** | The base rows a note's list reaches | The other half of that query, joined through `rule_note` |
 | `rule_condition` | 31 | fact | The eligibility terms a provision states about the base rate | Deciding whether a matched provision actually covers these goods (D-0057) |
-| `rule_coverage` | 2,825 | derived | How many base codes a provision reaches, by each path | A duty page, which needs it for every provision at once (D-0047) |
+| `rule_coverage` | 2,829 | derived | How many base codes a provision reaches, by each path | A duty page, which needs it for every provision at once (D-0047) |
 | `trade_programme` | 7 | **editorial** | Which trade action a heading family belongs to | Naming "Section 301" on screen, which the schedule never does (D-0045) |
 | `parse_issue` | non-empty | honesty | Everything that parsed into nothing | Self-review before submission; telling a user "I could not read this one" |
 
@@ -106,8 +106,8 @@ Written by Part 1, one row per source per run.
 | `id` | Surrogate key | The target of `source_fetch_id` on the parsed tables — "which batch is this row from" |
 | `run_id` | The Hatchet run | One of three sources failed; this groups the three rows to look at together |
 | `source_key` | `ch99` \| `base` \| `notes_pdf` | Looking only at how the PDF fetch went |
-| `release_name` | `2026HTSRev16` | **Answering "which revision is your data" at submission.** The HTSUS is revised several times a year, so the question will be asked |
-| `release_title` | `Revision 16 (2026)` | Shown in the UI footer; more readable than the name |
+| `release_name` | `2026HTSRev17` | **Answering "which revision is your data" at submission.** The HTSUS is revised several times a year, so the question will be asked |
+| `release_title` | `Revision 17 (2026)` | Shown in the UI footer; more readable than the name |
 | `url` | The exact URL requested | A reviewer reproducing the fetch: paste it into curl |
 | `path` | Where the payload landed | Opening the raw file when the parser errors on it |
 | `status` | `fetched` \| `unchanged` \| `skipped` \| `failed` | **Proving idempotency**: a second run that is all `unchanged` downloaded the bytes and found them identical — a verification, not a no-op. `skipped` means the endpoint could not serve the pinned release and the file on disk was preserved (D-0011) |
@@ -232,7 +232,7 @@ opens "Notwithstanding U.S. note 1 to this subchapter".
 
 ### Why `scope` exists
 
-Of the 3,098 coded provisions:
+Of the 3,103 coded provisions:
 
 | `scope` | Example | How it reaches goods |
 | --- | --- | --- |
@@ -315,7 +315,7 @@ The schedule states this, and reading it is what settles the order the duty engi
 | `cumulation` | Rows | Read from |
 | --- | ---: | --- |
 | `cumulative` | 798 | A note saying the duties are cumulative, most opening *"Notwithstanding U.S. note 1 to this subchapter"* |
-| `in_lieu` | 619 | U.S. note 1 to subchapter III: *"in lieu of the rate provided therefor in chapters 1 to 98"* |
+| `in_lieu` | 624 | U.S. note 1 to subchapter III: *"in lieu of the rate provided therefor in chapters 1 to 98"* |
 | `unstated` | 1,681 | No note this provision cites says either, and its subchapter has no note 1 here — subchapter II has no notes at all |
 
 Written by the **resolver**, not the Chapter 99 loader, because it needs the notes a later task
@@ -465,7 +465,7 @@ The only *derived* tables here. Drop both and they rebuild from `rule_edge` and
 There are two because a provision reaches base codes two ways, and the second one
 multiplies. `rule_base_match` holds the codes a provision names itself — **16,958 rows**.
 `note_base_match` holds the codes a *note* lists, expanded once per note rather than once
-per provision that cites it — **136,325 rows**. Storing the note path per provision was
+per provision that cites it — **141,656 rows**. Storing the note path per provision was
 measured first: note 52 lists 4,166 codes and is cited by 98 provisions, note 2 lists 2,322
 and is cited by 150, and the table came to roughly **4.7 million rows**, nearly all of them
 the same expansion written again (D-0036).
@@ -505,9 +505,9 @@ materialised rather than recomputed per query:
 4202         →  108      a 4-digit heading covers a whole product family
 ```
 
-`rule.scope` is corrected here, not in the Chapter 99 parser: **343 provisions** were filed
+`rule.scope` is corrected here, not in the Chapter 99 parser: **347 provisions** were filed
 as `by_country_all_goods` or `unknown` and became `by_code` once their note turned out to
-be a list. The final split is 2,914 / 67 / 117.
+be a list. The final split is 2,918 / 67 / 118.
 
 ---
 
@@ -532,7 +532,7 @@ Rebuilt by the `materialize` task at the end of the parse run, in the same pass 
 the tables under it, so it cannot describe a set of provisions that no longer exists.
 
 **`trade_programme`** is the one table whose contents are in none of the three sources.
-Measured: of 345 U.S. notes, exactly one names a statute, and it says "section 201" — the
+Measured: across 350 U.S. notes the only statute named anywhere is "section 201" — the
 schedule never writes "Section 301" or "Section 232" anywhere. So `+25%, articles the product
 of China, as provided for in U.S. note 20(b)` tells a novice nothing about what it is, and an
 app built to explain Chapter 99 to a novice cannot say.
@@ -561,15 +561,16 @@ guessed: `9903.89` and `9903.90` have no label. D-0045.
 | `detail` | The offending fragment, verbatim | The first thing read when fixing the parser |
 | `created_at` | When | |
 
-Residue on this release, **848 rows**, and every group is a known limit rather than a
+Residue on this release, **869 rows**, and every group is a known limit rather than a
 surprise:
 
 | Stage | Kind | Rows | What it is |
 | --- | --- | ---: | --- |
 | `base` | `unparsed_rate` | 305 | Column 1 or 2 rates written as English sentences |
-| `resolve` | `subdivision_not_segmented` | 277 | A citation named a subdivision the notes parser could not isolate from the PDF (D-0038) |
+| `resolve` | `subdivision_not_segmented` | 280 | A citation named a subdivision the notes parser could not isolate from the PDF (D-0038) |
 | `resolve` | `unresolved_code` | 226 | A cited code matching no row in this revision |
 | `ch99` | `unnamed_country` | 36 | A country written in a form the pattern does not cover |
+| `resolve` | `rate_silent_note_decides` | 18 | A bare rate read as a replacement while the note governing it says the duty is cumulative (D-0058) |
 | `ch99` | `unparsed_rate` | 3 | Chapter 99 rates that are sentences (D-0022, P-k) |
 | `resolve` | `unresolved_note` | 1 | A note citation matching no note |
 

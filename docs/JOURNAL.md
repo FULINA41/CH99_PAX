@@ -2283,3 +2283,56 @@ cost. Fetching and parsing Revision 17 took four minutes and turned "the parsers
 handle it" from the unstated fear behind the question into a measured "they do". The write-up
 is a different document for it: **"the documentation is stale and nothing else is"** is a claim
 worth making, and I could not have made it from the armchair.
+
+---
+
+## 2026-08-27 (later) — Re-baselined on Revision 17, and what the declaration was hiding
+
+Yesterday's answer to the revision problem was to declare it: keep the figures at Revision 16,
+explain the gap in SUBMISSION §5 (D-0071). Asked to make the working data current instead, I
+re-ran both parts against Revision 17 and updated the docs to match.
+
+**Part 1.** All three sources came back `unchanged` against the payloads fetched during the
+Rev 17 experiment — same three sha256 values, nothing re-downloaded. That is the idempotency
+claim holding across a session boundary rather than within one run.
+
+```
+release  2026HTSRev17  Revision 17 (2026)
+  base         unchanged   10,349,906 B  sha 888c15e2…
+  ch99         unchanged    1,996,519 B  sha 04d27370…
+  notes_pdf    unchanged   13,992,373 B  sha 0a267cc2…
+```
+
+**Part 2.** 20.3 s from a Revision 16 database to a Revision 17 one. Ran it a second time and
+compared all 14 table counts: identical, row for row.
+
+```
+rule 3,103 · note 350 · rule_note 982 · note_subheading 50,359 · note_base_match 141,656
+rule_country 507 · rule_coverage 2,829 · parse_issue 869
+unchanged: hts_base 26,246 · rule_base_match 16,958 · rule_edge 14,229
+           rule_identifier 1,229 · rule_condition 31 · trade_programme 7
+```
+
+**Verified, not assumed.** 134 workflow tests, 24 API tests, 6 component tests, all pass.
+`audit.py --codes 2000`: 0 invariant violations over 20,000 queries, and the settled-ness
+breakdown barely moved (37.8% fully determined, was ~37%). The three worked examples return
+what they returned on Revision 16 — `6109.10.00.12`/CN 36.5%, `7208.51.00.30`/CN 25%, /DE Free.
+
+**What the sweep found, which is the part worth recording.** Updating `docs/PART2_PARSER.md`
+turned up figures that were stale *before* Revision 17 existed: `parse_issue` 609,
+`note_base_match` 79,087, "738 of 800 citations resolve", "91 tests". Those date from before
+D-0038 segmented note subdivisions — the doc had drifted from its own release by a wide margin
+and I did not notice, because the header said "Revision 16" and I read that as "consistent".
+
+That is the real argument against D-0071 and I had it backwards yesterday. A declared baseline
+does not keep a document true; it makes staleness unfalsifiable, because every disagreement
+with the database has a ready explanation. The counts are now measured from the database that
+ships with the repo, so the next drift shows up as a contradiction instead of hiding behind a
+version label. D-0072 records this and supersedes D-0071.
+
+`docs/DECISIONS.md`, this journal, and `docs/DATA_INVENTORY.md` were deliberately left alone —
+they record what was observed on a date, and DATA_INVENTORY declares its release in its opening
+paragraph. `docs/superpowers/specs/` likewise, being dated design documents.
+
+**SUBMISSION §5** went from 50 lines of revision essay to a six-row assumptions table plus a
+three-sentence release statement. The essay existed to justify a gap that no longer exists.

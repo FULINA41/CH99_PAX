@@ -52,8 +52,8 @@ Four measured facts shaped the design more than any preference:
   pre-flight anything.
 - **The PDF endpoint accepts a specific release; `exportList` does not.** This asymmetry
   runs through the whole design (§6).
-- **The live release moved from Revision 15 to Revision 16 during this exercise.** The
-  release is data, not a constant.
+- **The live release moved from Revision 15 to Revision 16, and then to Revision 17,
+  during this exercise.** The release is data, not a constant.
 
 ## 3. Shape of the workflow
 
@@ -188,11 +188,11 @@ The in-container form is the documented one because it needs nothing installed b
 Docker. Running it from the host works too and wants `uv` and a synced venv.
 
 ```
-release  2026HTSRev16  Revision 16 (2026)
-  base         fetched     10,349,905 B  sha 221e1560…
-  ch99         fetched      1,992,914 B  sha 5a7ca6b0…
-  notes_pdf    fetched     13,969,270 B  sha 58b2a00d…
-3 fetched → /data/raw/2026HTSRev16/
+release  2026HTSRev17  Revision 17 (2026)
+  base         fetched     10,349,906 B  sha 888c15e2…
+  ch99         fetched      1,996,519 B  sha 04d27370…
+  notes_pdf    fetched     13,992,373 B  sha 0a267cc2…
+3 fetched → /data/raw/2026HTSRev17/
 ```
 
 Run it again and all three read `unchanged`, which is the visible proof of idempotency —

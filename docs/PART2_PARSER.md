@@ -187,12 +187,12 @@ prints **in order**, so segmentation rests on three ordering rules rather than o
 | A subdivision label may be at most two places ahead in the sequence a…z, aa…zz, aaa…zzz | `(vvv)`, quoted inside note 20's prose, being accepted after `(a)` and hiding the real `(b)` and its 874 codes |
 | Codes are read by a scan accepting a match at a non-digit **or where the previous ended** | Reading one code out of `0201.10.500201.10.10`, which pypdf prints with no separator |
 
-345 note records across 9 subchapters, 36,764 listed codes. `rule_note` keeps `cited_text`
+350 note records across 9 subchapters, 50,359 listed codes. `rule_note` keeps `cited_text`
 as the description wrote it and a nullable `note_id`, so an unresolved citation keeps its
 text and gets an issue rather than vanishing.
 
 The acceptance test is not a row count but whether the citations can find their notes:
-**738 of the 800 in-PDF citations resolve**. A further 126 name `additional U.S. note N to
+**855 of the 856 in-PDF citations resolve**. A further 126 name `additional U.S. note N to
 chapter N`, which belongs to another chapter's document and is correctly absent.
 
 ## 9. Idempotency and failure
@@ -208,15 +208,17 @@ something does. That is not stylistic: `DELETE FROM hts_base` took **10.4 second
 truncate statements **name their tables instead of using CASCADE**, so a table added later
 fails loudly with its name in the message — which it did, once, and cost one line.
 
-Nothing unparseable is discarded. `parse_issue` carries 609 rows:
+Nothing unparseable is discarded. `parse_issue` carries 869 rows:
 
 | stage | kind | rows |
 | --- | --- | ---: |
 | base | `unparsed_rate` | 305 |
+| resolve | `subdivision_not_segmented` | 280 |
 | resolve | `unresolved_code` | 226 |
-| resolve | `unresolved_note` | 62 |
-| ch99 | `unnamed_country` | 13 |
+| ch99 | `unnamed_country` | 36 |
+| resolve | `rate_silent_note_decides` | 18 |
 | ch99 | `unparsed_rate` | 3 |
+| resolve | `unresolved_note` | 1 |
 
 An empty `parse_issue` after a full run would mean the parser is not checking, not that the
 data is clean (D-0017).
@@ -228,14 +230,14 @@ data is clean (D-0017).
 ./setup.sh                                 # schema from empty
 cd workflows && uv run python -m scrape_run   # Part 1, once
 uv run python -m parse_run                    # Part 2
-uv run python -m parse_run --release 2026HTSRev16   # or pin a release
+uv run python -m parse_run --release 2026HTSRev17   # or pin a release
 ```
 
 `parse_run` prints a reconciliation table per stage. With no `--release` the parser picks
 the most recently resolved directory whose manifest says `complete` — chosen from what the
 scraper recorded, because with the network unplugged there is nothing to ask.
 
-`uv run pytest` runs 91 tests. None needs a worker, a database or a network.
+`uv run pytest` runs 134 tests. None needs a worker, a database or a network.
 
 ## 11. What it deliberately does not do
 
@@ -253,13 +255,14 @@ Run from an empty database (`./setup.sh`, `hts_base` at 0 rows) straight through
 
 ```
 hts_base   26,246 rows      11,779 / 11,778 rates inherited      305 uncomputable
-rule        3,098 rows      13,370 references   859 exclusions   397 countries
-note          345 records   36,764 listed codes
+rule        3,103 rows      13,370 references   859 exclusions   507 countries
+note          350 records   50,359 listed codes
 resolved   16,958 provision -> base matches (cited directly)
-           79,087 note -> base matches (once per note)
-              738 citations linked to a note
-              306 provisions rescoped once their note was read
-          scope now  2,877 by_code  102 by_country_all_goods  119 unknown
+          141,656 note -> base matches (once per note)
+              855 citations linked to a note
+              347 provisions rescoped once their note was read
+          cumulation 798 cumulative  624 in_lieu  1,681 unstated
+          scope now  2,918 by_code  67 by_country_all_goods  118 unknown
 ```
 
 **Idempotent end to end**, not only per task: a second run reproduces every figure above,

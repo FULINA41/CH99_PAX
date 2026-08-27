@@ -6,7 +6,7 @@ from parse import ParseInput, parse_workflow
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Parse the staged HTS payloads.")
-    parser.add_argument("--release", help="parse a specific release, e.g. 2026HTSRev16")
+    parser.add_argument("--release", help="parse a specific release, e.g. 2026HTSRev17")
     args = parser.parse_args()
 
     ref = parse_workflow.run(ParseInput(release=args.release), wait_for_result=False)

@@ -39,56 +39,27 @@ Known bugs, shortcuts, the thing that's held together with tape. Be blunt.
 Where the data was ambiguous and you had to pick. What you picked, and why.
 -->
 
-### The revision: every number here is Revision 16, and you will see Revision 17
+Where the sources were ambiguous, the reading is recorded in `docs/DECISIONS.md` and the
+provision that forced it is cited there. The ones that change an answer on screen:
 
-**Read this before comparing any count in this repository against your own run.**
+| Assumption | Why | Where |
+| --- | --- | --- |
+| Chapter 99 rates replace the ordinary rate unless a note says otherwise | U.S. note 1 to subchapter III says *"in lieu of"*; 31 notes override with *"Notwithstanding U.S. note 1"*. The note is read per provision, not assumed | D-0058 |
+| A provision that names countries reaches no others | The schedule states the origin in prose only. Provisions naming a bloc (*"a member state of the European Union"*) are expanded to members | D-0056 |
+| A provision with no date is in force | Expiry is marked by grey shading in the PDF, which text extraction destroys. Only dates written into the description are read | D-0043 |
+| Column 2 applies to Cuba, North Korea, Russia, Belarus | General Note 3(b) is in none of the three sources. This list is **editorial**, and the UI says so | D-0054 |
+| "Section 301" / "Section 232" are our labels | The schedule never names a statute — across 350 U.S. notes the only one mentioned is *section 201*. The mapping is one small editorial table | D-0045 |
+| Exclusions are reported, not applied | Whether an exclusion covers a shipment depends on the goods, not the code. They are listed and counted; they never move the number | D-0069 |
 
-All figures in `docs/SCHEMA.md`, `docs/PART3_APP.md`, `docs/DECISIONS.md` and
-`docs/JOURNAL.md` were measured against **2026HTSRev16**. As of 2026-08-27 the USITC serves
-**2026HTSRev17**, and `data/` is gitignored — so Part 1 on a fresh clone fetches Revision 17
-and your counts will differ from ours.
+Two things the site therefore does not claim. It does not give **one** rate when the
+sources do not determine one — competing replacements are shown as a range, and `api/audit.py`
+checks that property over 20,000 queries. And it does not classify goods: search matches the
+schedule's wording, not your shipment.
 
-**Pinning does not recover it, and that is the part worth knowing.** The scraper takes
-`--release`, but only the notes PDF has a stable per-revision URL; the two JSON exports are
-served for the current release only:
-
-```
-uv run python -m scrape_run --release 2026HTSRev16
-  base       skipped     endpoint cannot serve a past release
-  ch99       skipped     endpoint cannot serve a past release
-  notes_pdf  unchanged   13,969,270 B
-```
-
-With nothing already on disk those two carry no sha256, `build_manifest` therefore writes
-`"complete": false`, and Part 2 refuses to start on the directory — deliberately (D-0007: a run
-that parsed two of three payloads would produce a database that looks finished). So **Revision
-16 is not reachable from a cold clone at all.** We kept the documented figures at Revision 16
-rather than re-baselining, because the write-up, the decisions and the journal are a record of
-what was measured when, and rewriting a dated measurement is worse than explaining it.
-
-**This is a documentation gap, not a defect, and it was checked rather than assumed.** We
-fetched Revision 17 and parsed it on 2026-08-27. It parses cleanly, the `api/audit.py`
-invariants hold over 8,000 queries, and every worked example on the site returns the same
-answer. What moves is five new provisions and five new notes:
-
-| | Rev 16 | Rev 17 |
-| --- | ---: | ---: |
-| `hts_base` | 26,246 | 26,246 |
-| `rule` | 3,098 | 3,103 |
-| `note` | 345 | 350 |
-| `rule_note` | 977 | 982 |
-| `note_subheading` | 48,053 | 50,359 |
-| `note_base_match` | 136,325 | 141,656 |
-| `rule_country` | 503 | 507 |
-| `rule_coverage` | 2,825 | 2,829 |
-| `rule_base_match`, `rule_edge`, `rule_identifier`, `rule_condition` | 16,958 · 14,229 · 1,229 · 31 | unchanged |
-| `parse_issue` | 848 | 869 |
-
-`parse_issue` moves by 21 of which 18 are a pre-existing category, so the parsers did not lose
-ground on the new revision — which is the thing a reviewer would actually want to know.
-
-If you want to reproduce our figures exactly, the payloads are reproducible only from a copy of
-`data/raw/2026HTSRev16/`; ask us for it rather than trying to fetch it.
+**Release.** All figures in this repository were measured against **2026HTSRev17**, the
+release current on 2026-08-27. The HTSUS is revised several times a year and `data/` is
+gitignored, so a later clone fetches whatever is current then and counts will differ.
+`source_fetch` records the release every row came from, and the UI footer shows it.
 
 ## 6. Where you used AI tools
 

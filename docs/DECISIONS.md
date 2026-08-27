@@ -2794,7 +2794,7 @@ failed when it had not.
 
 ## D-0071 — Keep the documented counts at Revision 16 and declare it, rather than re-baselining
 
-**Date:** 2026-08-27 · **Area:** scraper, docs · **Status:** accepted, closes P-m
+**Date:** 2026-08-27 · **Area:** scraper, docs · **Status:** superseded by D-0072
 
 **Context.** Every figure in this repository is measured against **2026HTSRev16**. On
 2026-08-27 the USITC is serving **2026HTSRev17**, and `data/` is gitignored, so a reviewer
@@ -2946,3 +2946,48 @@ request-scoped API, and would stop being true the moment one does. The page comp
 themselves are still untested — they fetch, and there is no fixture for that.
 
 **Feeds.** SUBMISSION.md §2, §4
+
+---
+
+## D-0072 — Re-baseline every figure on the release a reviewer will actually get
+
+**Date:** 2026-08-27 · **Area:** scraper, parser, docs · **Status:** accepted · supersedes D-0071
+
+**Context.** D-0071 kept the documented counts at Revision 16 and explained the gap in
+SUBMISSION §5, on the reasoning that a dated measurement should not be rewritten. That
+reasoning protected the wrong thing. `docs/SCHEMA.md` and `docs/PART2_PARSER.md` are not
+dated measurements — they are the reference a reviewer reads *while querying the database in
+front of them*, and every count in them disagreed with that database by construction. The
+explanation in §5 cost 50 lines and asked the reviewer to take a delta table on trust.
+
+Re-running both parts against Revision 17 also surfaced drift that predates the revision:
+`docs/PART2_PARSER.md` still carried `parse_issue` 609, `note_base_match` 79,087 and "91
+tests" — figures from before D-0038 segmented note subdivisions. The doc had been stale
+against its *own* release and the Revision 16 declaration was hiding it.
+
+**Options.**
+- Keep D-0071: declare Revision 16, leave the docs, explain the delta. Costs a section no one can verify.
+- Re-baseline everything on Revision 17 and let dated records stand as records.
+- Pin the scraper to Revision 16 so the docs stay true. Impossible — the two JSON endpoints serve the current release only, so `build_manifest` writes `complete: false` and Part 2 refuses the directory (D-0007).
+
+**Decision.** Re-ran Part 1 and Part 2 against **2026HTSRev17** and updated every count in
+`docs/SCHEMA.md`, `docs/PART2_PARSER.md` and `docs/PART1_SCRAPER.md` to match the database.
+`SUBMISSION.md` §5 drops the revision essay and states the baseline in three sentences.
+
+`docs/DECISIONS.md`, `docs/JOURNAL.md` and `docs/DATA_INVENTORY.md` are **not** updated:
+they are dated records of what was measured when, and DATA_INVENTORY already declares its
+release in its first paragraph. That is the line — a document that describes the current
+database gets corrected, a document that records a past observation does not.
+
+**Verification.** Revision 17 parses without error in 20 s; a second run reproduces all 14
+table counts exactly; 134 + 24 + 6 tests pass; `api/audit.py --codes 2000` reports 0
+invariant violations over 20,000 queries; the three worked examples return the same answers
+they did on Revision 16 (`6109.10.00.12`/CN 36.5%, `7208.51.00.30`/CN 25%, /DE Free).
+
+**Tradeoff.** The next revision re-opens this, and there is no test that catches a count in
+prose going stale — the sweep was manual and could have missed one. What would make this
+wrong is a revision that changes counts without changing behaviour going unnoticed; the
+mitigation is that `SUBMISSION.md` §5 now names the release rather than implying counts are
+constants.
+
+**Feeds.** SUBMISSION.md §5
